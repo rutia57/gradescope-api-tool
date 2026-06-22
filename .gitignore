@@ -1,2 +1,5 @@
 gradescope_profiles/
 data/
+.venv/
+.vscode/
+__pycache__/
