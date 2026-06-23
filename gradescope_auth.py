@@ -17,10 +17,12 @@ PROFILE_ROOT.mkdir(exist_ok=True)
 METADATA_FILE = PROFILE_ROOT / "metadata.json"
 
 class GSConnectionFromSession:
-    def __init__(self, session):
+    def __init__(self, session, user):
         self.session = session
         self.logged_in = True
         self.account = Account(session)
+        self.name = user.get('name', None)
+        self.email = user.get('email', None)
 
 
 def create_token():
@@ -76,9 +78,10 @@ def login_with_token(token):
         page = context.pages[0] if context.pages else context.new_page()
         page.goto(f'{BASE_URL}/login')
         page.wait_for_selector("text=Course Dashboard", timeout=0)
+        user = page.evaluate("bugsnagClient.user")
         session = build_session_from_playwright(context)
         context.close()
-    return GSConnectionFromSession(session)
+    return GSConnectionFromSession(session, user)
 
 def login_temporary():
     temp_profile_dir = tempfile.mkdtemp()
@@ -87,9 +90,10 @@ def login_temporary():
         page = context.pages[0] if context.pages else context.new_page()
         page.goto(f'{BASE_URL}/login')
         page.wait_for_selector("text=Course Dashboard", timeout=0)
+        user = page.evaluate("bugsnagClient.user")
         session = build_session_from_playwright(context)
         context.close()
-    conn = GSConnectionFromSession(session)
+    conn = GSConnectionFromSession(session, user)
     return conn, temp_profile_dir
 
 def save_profile_for_token(temp_profile_dir, token):
