@@ -1,19 +1,37 @@
 import streamlit as st
-import pandas as pd
+import io 
+import zipfile
 import datetime
-import streamlit_analytics_custom
+import analytics
+from collections import defaultdict
 import tempfile 
 import json 
+import pandas as pd
+import copy
 import os
 import uuid
 import traceback
+from st_aggrid import AgGrid
 from utils import (
+    get_student_info,
+    get_instructor_info,
+    get_user_mapping,
+    get_assignment_questions,
+    get_raw_submissions_metadata,
+    get_grades_metadata,
+    get_student_to_assignment_submissions,
+    get_grader_by_question_submission,
+    get_question_to_question_submissions,
+    get_raw_data_by_question_submission,
+    get_grade_breakdowns,
+    get_grade_summary,
+    get_original_submissions_zip_bytes,
+    get_graded_submissions_zip_bytes,
+    build_feedback_files,
     format_course_names,
     format_assignment_names,
-    get_full_assignment_info,
-    get_student_info,
-    get_assignment_questions,
-    get_grade_summary,
+    format_grade_summary_df,
+    is_arrow_compatible,
 )
 from gradescope_auth import (
     create_new_user, 
@@ -22,6 +40,9 @@ from gradescope_auth import (
     save_profile_for_token,
     cleanup_old_profiles,
 )
+
+import warnings
+warnings.filterwarnings("ignore", message=".*cached function.*widget.*")
 
 cleanup_old_profiles()
 
@@ -39,14 +60,34 @@ if 'selected_course_name' not in st.session_state:
 if 'selected_assignment_name' not in st.session_state:
     st.session_state['selected_assignment_name'] = default_assignment_option
 
-for var_int in ['download_grade_summary_report_count', 'download_grade_feedback_files_count', 'download_original_submissions_count', 'download_graded_submissions_count', 'download_assignment_outline_count']: 
-    if var_int not in st.session_state: 
-        st.session_state[var_int] = 0
+if 'button_click_counts' not in st.session_state: 
+    st.session_state['button_click_counts'] = defaultdict(lambda: defaultdict(int))
 if 'session_id' not in st.session_state: 
     st.session_state.session_id = uuid.uuid4()
+if 'state_hash' not in st.session_state: 
+    st.session_state.state_hash = hash(
+        f'{st.session_state.gs_conn.name if st.session_state.gs_conn is not None else None}_'
+        f'{st.session_state.gs_conn.email if st.session_state.gs_conn is not None else None}_'
+        f'{st.session_state.selected_assignment_name}_'
+        f'{st.session_state.selected_course_name}_'
+    )
 
-def update_session_id():
-    st.session_state.session_id = uuid.uuid4()
+# session vars used for graded zip download
+if "graded_submissions_bytes" not in st.session_state:
+    st.session_state.graded_submissions_bytes = None
+if "download_button_disabled" not in st.session_state: 
+    st.session_state.download_button_disabled = True
+
+def update_state_hash(): 
+    st.session_state.state_hash = hash(
+        f'{st.session_state.gs_conn.name if st.session_state.gs_conn is not None else None}_'
+        f'{st.session_state.gs_conn.email if st.session_state.gs_conn is not None else None}_'
+        f'{st.session_state.selected_assignment_name}_'
+        f'{st.session_state.selected_course_name}_'
+    )
+
+def increment_button_count(button_name): 
+    st.session_state.button_click_counts[st.session_state['state_hash']][button_name] += 1
 
 if os.path.exists("firebase-key.json"):
     key_file = "firebase-key.json"
@@ -61,7 +102,7 @@ else:
 with st.expander('Connect to Gradescope', expanded=True):
     col1, col2 = st.columns([3, 3])
     with col1:
-        st.text("Click here to connect to your Gradescope account. A browser window will open so you can log in.")
+        st.text("Click the button below to log in to your Gradescope account.\nWhen a browser window with the login page opens, please log in to your account.")
         col3, col4 = st.columns([4,4])
         with col3:
             token_input = st.text_input("Secret token", placeholder="Optional")
@@ -70,7 +111,7 @@ with st.expander('Connect to Gradescope', expanded=True):
             st.caption("If you saved a token from a previous session, the app can reuse the associated browser profile so that you don't have to log in again.")
         if st.button("Connect to Gradescope"):
             try:
-                with st.spinner("Opening browser and connecting to Gradescope..."):
+                with st.spinner("Opening browser and connecting to Gradescope...", show_time=True):
                     if token_input.strip():
                         token = token_input.strip()
                         conn = login_with_token(token)
@@ -113,7 +154,7 @@ if st.session_state.gs_conn is not None:
         course_name_mapping = format_course_names(courses)
         selected_course = st.selectbox('Select a course to view assignment data:', 
                                     options=[default_course_option] + list(course_name_mapping.keys()),
-                                    on_change=update_session_id)
+                                    on_change=update_state_hash)
         st.session_state.selected_course_id = course_name_mapping[selected_course] if selected_course in course_name_mapping else None
         st.session_state.selected_course_name = selected_course
     with col8:
@@ -123,101 +164,245 @@ if st.session_state.gs_conn is not None:
             assignment_name_mapping = format_assignment_names(assignments)
             selected_assignment = st.selectbox('Select an assignment to view grade data:', 
                                     options=[default_assignment_option] + list(assignment_name_mapping.keys()),
-                                    on_change=update_session_id)
+                                    on_change=update_state_hash)
             st.session_state.selected_assignment_id = assignment_name_mapping[selected_assignment] if selected_assignment in assignment_name_mapping else None
             st.session_state.selected_assignment_name = selected_assignment
-            st.session_state.session_id = uuid.uuid4()
         else:
             st.session_state.selected_assignment_id = None
             st.session_state.selected_assignment_name = None
-            st.session_state.session_id = uuid.uuid4()
 
 
     # Load assignment data
     if st.session_state.selected_assignment_id is not None: 
-        with st.spinner('Loading assignment data...'):
+        with st.spinner('Loading assignment data...', show_time=True):
             if st.session_state.selected_assignment_id == '<nan>': 
                 st.warning('No grade data available for this assignment.')
             else: 
-                assignment = [x for x in st.session_state.gs_conn.account.get_assignments(st.session_state.selected_course_id) if x.assignment_id == st.session_state.selected_assignment_id][0]
-                submissions = get_full_assignment_info(st.session_state.gs_conn, st.session_state.selected_course_id, st.session_state.selected_assignment_id)
-                questions = get_assignment_questions(st.session_state.gs_conn, st.session_state.selected_course_id, st.session_state.selected_assignment_id)
+                try: 
+                    conn = st.session_state.gs_conn
+                    assignment = [x for x in conn.account.get_assignments(st.session_state.selected_course_id) if x.assignment_id == st.session_state.selected_assignment_id][0]
+                    assignment_id = st.session_state.selected_assignment_id
+                    course_id = st.session_state.selected_course_id
 
-                with st.expander('Assignment summary', expanded=True):
-                    release_date_str = (f'{assignment.release_date:%b %-d, %Y}') if assignment.release_date else '–'
-                    due_date_str = (f'{assignment.due_date:%b %-d, %Y}') if assignment.due_date else '–'
-                    c1, c2, c3, c4, c5, c6, c7, _ = st.columns([3,3,2,2,2,2,2,2])
-                    c1.metric("Released Date", release_date_str)
-                    c2.metric("Due Date", due_date_str)
-                    c3.metric("Questions", len(questions))
-                    c4.metric("Total Points", assignment.max_grade)
-                    c5.metric("Total submissions", len(submissions['detailed_submissions']))
-                    c6.metric("Fully-graded submissions", len([s for s in submissions['detailed_submissions'].values() if s['graded'] and s['grading_progress']==100]))
-                    c7.metric("Partially-graded submissions", len([s for s in submissions['detailed_submissions'].values() if s['grading_progress']<100]))
+                    with st.spinner('Loading assignment & grade data from Gradescope...', show_time=True):
+                        students, max_student_name_length = get_student_info(conn, course_id)
+                        instructors = get_instructor_info(conn, course_id)
+                        student_mapping = get_user_mapping(students)
+                        instructor_mapping = get_user_mapping(instructors)
+                        users = students + instructors
+                        user_mapping = student_mapping | instructor_mapping
+                        questions, questions_order = get_assignment_questions(conn, course_id, assignment_id)
+                        raw_submissions_metadata = get_raw_submissions_metadata(conn, course_id, assignment_id)
+                        grades_metadata = get_grades_metadata(conn, course_id, assignment_id, instructors, users)
+                        student_to_assignment_submissions = get_student_to_assignment_submissions(users, raw_submissions_metadata, grades_metadata)
+                        grader_by_question_submission = get_grader_by_question_submission(conn, course_id, questions)
+                        question_to_submissions = get_question_to_question_submissions(conn, course_id, questions)
+                        comments, total_scores, student_to_question_to_question_submission = get_raw_data_by_question_submission(conn, course_id, users, questions, question_to_submissions, student_to_assignment_submissions)
+                        grade_breakdowns = get_grade_breakdowns(users, questions, comments, total_scores, student_to_question_to_question_submission, grader_by_question_submission, questions_order)
+                        users_with_grades = [u for u in users if grades_metadata[u.email_address]['submitted']]
 
-                st.text('The following reports are available to preview and download for this asssignment:')
+                    with st.expander('Assignment summary', expanded=True):
+                        release_date_str = (f'{assignment.release_date:%b %-d, %Y}') if assignment.release_date else '–'
+                        due_date_str = (f'{assignment.due_date:%b %-d, %Y}') if assignment.due_date else '–'
+                        c1, c2, c3, c4, c5, c6, c7, _ = st.columns([3,3,2,2,2,2,2,2])
+                        c1.metric("Released Date", release_date_str)
+                        c2.metric("Due Date", due_date_str)
+                        c3.metric("Questions", len(questions))
+                        c4.metric("Total Points", assignment.max_grade)
+                        c5.metric("Total submissions", len(raw_submissions_metadata['detailed_submissions']))
+                        c6.metric("Fully-graded submissions", len([s for s in raw_submissions_metadata['detailed_submissions'].values() if s['graded'] and s['grading_progress']==100]))
+                        c7.metric("Partially-graded submissions", len([s for s in raw_submissions_metadata['detailed_submissions'].values() if s['grading_progress']<100]))
 
-                # TODO REMOVE THIS
-                # st.text(get_assignment_questions(st.session_state.gs_conn, st.session_state.selected_course_id, st.session_state.selected_assignment_id))
+                    st.text('The following reports are available to preview and download for this asssignment:')
 
-                students, max_name_length = get_student_info(st.session_state.gs_conn, st.session_state.selected_course_id)
-
-                st.markdown(f'#### 1. Grade summary spreadsheet')
-                st.caption('Table with each student\'s grade breakdown (by question and subquestion), comments, and total grade.')
-                with st.expander('Preview grade summary', expanded=False):
-                    grade_summary = get_grade_summary(st.session_state.gs_conn, st.session_state.selected_course_id, st.session_state.selected_assignment_id)
-                    grade_summary_styled = grade_summary.copy()
-                    grade_summary_styled = grade_summary_styled.style.apply(
-                        lambda col: ["font-weight: bold; background-color: #e8edff;"]*len(col) if "assignment total" in col.name.lower() 
-                        else (["font-weight: bold; background-color: #f0f0f0;"]*len(col) if "total" in col.name.lower() 
-                        else (["background-color: #f1e8ff;"]*len(col) if ("email" in col.name.lower() or "student name" in col.name.lower()) else [""] * len(col))), axis=0
+                    st.markdown(f'#### 1. Grade summary spreadsheet')
+                    st.caption('Table with each student\'s grade breakdown (by question and subquestion), comments, and total grade.')
+                    grade_summary = get_grade_summary(
+                        assignment.name, 
+                        assignment.due_date.isoformat(sep=' ') if assignment.due_date else '–', 
+                        assignment.max_grade,
+                        users,
+                        questions,
+                        user_mapping,
+                        grade_breakdowns,
+                        grades_metadata,
+                        student_to_assignment_submissions,
                     )
-                    st.dataframe(grade_summary_styled, hide_index=True)
-                download_grade_summary_report = st.download_button(
-                    '**Download grade summary (.csv file)**', 
-                    data=grade_summary.to_csv(index=False).encode("utf-8"),
-                    file_name=f'{assignment.name.replace(" ","")}_grades_summary_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.csv'
-                )
-                if download_grade_summary_report: 
-                    st.session_state.download_grade_summary_report_count += 1
+                    if st.toggle('Preview grade summary'):
+                        grade_summary_styled, grid_options, preview_height, custom_css = format_grade_summary_df(grade_summary)
+                        df_pa_compatible, error_message = is_arrow_compatible(grade_summary_styled)
+                        if df_pa_compatible:
+                            print("Duplicate columns?", grade_summary_styled.columns.duplicated().any())
+                            print("Auto id present?", "::auto_unique_id::" in grade_summary_styled.columns)
+                            AgGrid(
+                                grade_summary_styled, 
+                                grid_options, 
+                                fit_columns_on_grid_load=True, 
+                                height=preview_height, 
+                                allow_unsafe_jscode=True, 
+                                custom_css=custom_css, 
+                                width='50%',
+                            )
+                            print("Duplicate columns?", grade_summary_styled.columns.duplicated().any())
+                            print("Auto id present?", "::auto_unique_id::" in grade_summary_styled.columns)
+                            print("DF hash:", pd.util.hash_pandas_object(grade_summary_styled, index=True).sum())
+                            print("Grid options hash:", hash(json.dumps(grid_options, default=str, sort_keys=True)))
+                            print("Preview height:", preview_height)
+                            print("Columns:", grade_summary_styled.columns.tolist())
+                        else: 
+                            st.warning('Error loading preview – download .csv file below to see data.')
+                            with st.expander('Show error traceback:'):
+                                st.code(error_message)
 
-                st.markdown(f'#### 2. Grade feedback files for students')
-                st.caption('Text files with each student\'s grade breakdown and comments.')
-                with st.expander('Select students and preview grade feedback', expanded=False):
-                    st.multiselect('Select students', students, default=students, format_func=lambda x: f'{x[1]+" "+x[2]:<{max_name_length+1}} [{x[0]}]', key='selected_students_grades')
-                    with st.expander('Preview grade feedback'):
-                        st.text(f'selected {len(st.session_state.selected_students_grades)} students:')
-                        st.text(st.session_state.selected_students_grades)
+                    download_grade_summary_report = st.download_button(
+                        '**Download grade summary (.csv file)**', 
+                        data=grade_summary.to_csv(index=False).encode("utf-8"),
+                        file_name=f'{assignment.name.replace(" ","")}_grades_summary_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.csv',
+                        on_click=lambda: increment_button_count('download_grade_summary_report'),
+                    )
+                    def update_selected_student_grade_preview(): 
+                        if st.session_state.selected_students_grades:
+                            st.session_state['selected_student_grade_preview'] = st.session_state.selected_students_grades[0]
+                        else: 
+                            st.session_state['selected_student_grade_preview'] = None
+                    st.markdown(f'#### 2. Grade feedback files for students')
+                    st.caption('Text files with each student\'s grade breakdown and comments.')
+                    with st.expander('Select students and preview grade feedback', expanded=False):
+                        st.multiselect('Select students', users_with_grades, default=users_with_grades, format_func=lambda x: f'{x.first_name+" "+x.last_name:<{max_student_name_length+1}} [{x.email_address}]', key='selected_students_grades', 
+                                       on_change=update_selected_student_grade_preview)
+                        if st.session_state.selected_students_grades: 
+                            with st.expander('Preview grade feedback'):
+                                grade_feedback_strings = build_feedback_files(
+                                    assignment.name,
+                                    assignment.max_grade,
+                                    st.session_state.selected_students_grades,
+                                    questions, 
+                                    user_mapping,
+                                    grade_breakdowns,
+                                    grades_metadata,
+                                )
+                                st.text(f'Selected {len(st.session_state.selected_students_grades)} students.')
+                                c1, c2 = st.columns([3,10])
+                                with c1:
+                                    if 'selected_student_grade_preview' not in st.session_state:
+                                        st.session_state['selected_student_grade_preview'] = st.session_state.selected_students_grades[0]
+                                    if st.session_state.selected_student_grade_preview is not None:
+                                        st.text(f'Previewing feedback file for {st.session_state.selected_student_grade_preview.first_name} {st.session_state.selected_student_grade_preview.last_name}:')
+                                with c2: 
+                                    st.selectbox('Select a student to preview their feedback file:', 
+                                        options=st.session_state.selected_students_grades,
+                                        format_func=lambda x: f'{x.first_name+" "+x.last_name:<{max_student_name_length+1}} [{x.email_address}]',
+                                        key='selected_student_grade_preview', 
+                                    )
+                                st.code(grade_feedback_strings[st.session_state.selected_student_grade_preview.identifier], language=None)
+                                buffer = io.BytesIO()
+                                with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+                                    for student_id, text in grade_feedback_strings.items():
+                                        zf.writestr(f'{assignment.name.replace(" ","")}_{user_mapping[student_id].last_name}_{user_mapping[student_id].first_name}_grade_breakdown_and_feedback.txt', text)
+                                grade_feedback_files_zip_file_bytes = buffer.getvalue()
+                        else: 
+                            grade_feedback_files_zip_file_bytes = ''
+                    download_grade_feedback_files = st.download_button(
+                        f'**Download grade feedback for selected students ({len(st.session_state.selected_students_grades)}) (.zip containing .txt files)**', 
+                        grade_feedback_files_zip_file_bytes,
+                        file_name=f'{assignment.name.replace(" ","")}_grade_feedback_files_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
+                        on_click=lambda: increment_button_count('download_grade_feedback_files')
+                    )
+
+                    st.markdown(f'#### 3. Submissions')  
+                    st.caption('Students\' submitted PDF files and graded PDF files with feedback.')
+                    with st.expander('Select students and preview submissions data', expanded=False):
+                        st.multiselect('Select students', users_with_grades, default=users_with_grades, format_func=lambda x: f'{x.first_name+" "+x.last_name:<{max_student_name_length+1}} [{x.email_address}]', key='selected_students_submissions')
+                        with st.expander('Submissions summary'):
+                            # TODO Add submissions summary
+                            st.text('here goes a summary')
+                    original_submissions_bytes = get_original_submissions_zip_bytes(
+                        conn,
+                        course_id,
+                        assignment_id,
+                        assignment.name.replace(" ",""),
+                        [(student_to_assignment_submissions[s.identifier], s.first_name.replace(' ','_')+"_"+s.last_name.replace(' ','_')) for s in st.session_state.selected_students_submissions]
+                    )
+                    download_original_submissions = st.download_button(
+                        f'**Download original submissions for selected students ({len(st.session_state.selected_students_submissions)}) (.zip containing .pdf files)**', 
+                        original_submissions_bytes,
+                        file_name=f'{assignment.name.replace(" ","")}_original_submissions_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
+                        on_click=lambda: increment_button_count('download_original_submissions'),
+                    )
+                    export_button_col,c2,c3,_ = st.columns([4,3,1,2])
+                    with c3: 
+                        success_message_placeholder = st.empty()
+                    grades_download_button_slot = st.empty() 
+                    grades_download_button_slot.download_button(
+                        f'**Download graded submissions with feedback for selected students ({len(st.session_state.selected_students_submissions)}) (.zip containing .pdf files)**', 
+                        '',
+                        file_name=f'{assignment.name.replace(" ","")}_graded_submissions_with_comments_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
+                        on_click=lambda: increment_button_count('download_graded_submissions'),
+                        disabled=True,
+                        key=str(uuid.uuid4()),
+                    )
+                    with c2: 
+                        progress_placeholder = st.empty()
+                        def progress_cb(n):
+                            progress_placeholder.progress(min(n,1.0))
+                            if n <= 1:
+                                success_message_placeholder.empty()
+                                grades_download_button_slot.empty() 
+                                grades_download_button_slot.download_button(
+                                    f'**Download graded submissions with feedback for selected students ({len(st.session_state.selected_students_submissions)}) (.zip containing .pdf files)**', 
+                                    '',
+                                    file_name=f'{assignment.name.replace(" ","")}_graded_submissions_with_comments_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
+                                    on_click=lambda: increment_button_count('download_graded_submissions'),
+                                    disabled=True,
+                                    key=str(uuid.uuid4()),
+                                )
+                            else:
+                                success_message_placeholder.empty()
+                                success_message_placeholder.success('Export complete!') 
+                                grades_download_button_slot.empty() 
+                                grades_download_button_slot.download_button(
+                                    f'**Download graded submissions with feedback for selected students ({len(st.session_state.selected_students_submissions)}) (.zip containing .pdf files)**', 
+                                    st.session_state.graded_submissions_bytes,
+                                    file_name=f'{assignment.name.replace(" ","")}_graded_submissions_with_comments_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
+                                    on_click=lambda: increment_button_count('download_graded_submissions'),
+                                    disabled=False,
+                                    key=str(uuid.uuid4()),
+                                )
+
+                    st.markdown(f'#### 4. Assignment outline info')
+                    st.caption('Table with a summary of the questions on this assignment, including the rubric with possible comments, grader info, and grade stats.')
+                    with st.expander('Preview assignment outline info', expanded=False):
                         st.table([[1,2,3,4],[1,2,3,4]]) # TODO
-                download_grade_feedback_files = st.download_button(f'**Download grade feedback for selected students ({len(st.session_state.selected_students_grades)}) (.zip containing .txt files)**', 'TODO')
-                if download_grade_feedback_files: 
-                    st.session_state.download_grade_feedback_files_count += 1
+                    download_assignment_outline = st.download_button(
+                        '**Download assignment outline info (.csv file)**', 
+                        'TODO',
+                        on_click=lambda: increment_button_count('download_assignment_outline'),
+                    )   
 
-                st.markdown(f'#### 3. Submissions')  
-                st.caption('Students\' submitted PDF files and graded PDF files with feedback.')
-                with st.expander('Select students and preview submissions data', expanded=False):
-                    st.multiselect('Select students', students, default=students, format_func=lambda x: f'{x[1]+" "+x[2]:<{max_name_length+1}} [{x[0]}]', key='selected_students_submissions')
-                    with st.expander('Submissions summary'):
-                        st.text(f'selected {len(st.session_state.selected_students_submissions)} students:')
-                        st.text(st.session_state.selected_students_submissions)
-                        st.table([[1,2,3,4],[1,2,3,4]]) # TODO
-                download_original_submissions = st.download_button(f'**Download original submissions for selected students ({len(st.session_state.selected_students_submissions)}) (.zip containing .pdf files)**', 'TODO')
-                download_graded_submissions = st.download_button(f'**Download graded submissions with feedback for selected students ({len(st.session_state.selected_students_submissions)}) (.zip containing .pdf files)**', 'TODO')
-                if download_original_submissions: 
-                    st.session_state.download_original_submissions_count += 1
-                if download_graded_submissions: 
-                    st.session_state.download_graded_submissions_count += 1
+                    with export_button_col:
+                        export_button = st.button(f"Export graded submissions with feedback for selected students ({len(st.session_state.selected_students_submissions)}) (.zip containing .pdf files)")
+                        st.caption('Warning: This export can take a while (up to ~30-60 mins) for classes with many (80+) students, even if not all students are selected. You\'ll get an email when the export is complete.')
+                        if export_button:
+                            with st.spinner('Downloading graded submissions...', show_time=True):
+                                st.session_state.graded_submissions_bytes = get_graded_submissions_zip_bytes(
+                                    conn,
+                                    course_id,
+                                    assignment_id,
+                                    {submission_id: user_mapping[student_id].first_name.replace(' ','_')+"_"+user_mapping[student_id].last_name.replace(' ','_') for (student_id, submission_id) in student_to_assignment_submissions.items()},
+                                    assignment.name,
+                                    f'{assignment.name.replace(" ","")}_graded_submissions_with_comments_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}',
+                                    submission_ids=[student_to_assignment_submissions[s.identifier] for s in st.session_state.selected_students_submissions],
+                                    _progress_callback=lambda n: progress_cb(n),
+                                )
+                                progress_cb(1.1)
 
-                st.markdown(f'#### 4. Assignment outline info')
-                st.caption('Table with a summary of the questions on this assignment, including the rubric, possible comments, grader info, and grades stats.')
-                with st.expander('Preview assignment outline info', expanded=False):
-                    st.table([[1,2,3,4],[1,2,3,4]]) # TODO
-                download_assignment_outline = st.download_button('**Download assignment outline info (.csv file)**', 'TODO')
-                if download_assignment_outline: 
-                    st.session_state.download_assignment_outline_count += 1
+
+                except NotImplementedError as e:
+                    st.error(e)
+
 
 try:
-    streamlit_analytics_custom.log_user_info(firestore_key_file="firebase-key.json", firestore_collection_name=firestore_collection_name_key)
+    analytics.log_stats(firestore_key_file="firebase-key.json", firestore_collection_name=firestore_collection_name_key)
 except Exception:
     st.warning(f'Failed to save app analytics: {traceback.format_exc()}')
 

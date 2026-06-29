@@ -20,21 +20,19 @@ class GSConnectionFromSession:
     def __init__(self, session, user):
         self.session = session
         self.logged_in = True
+        self.start_time = datetime.now().isoformat()
         self.account = Account(session)
         self.name = user.get('name', None)
         self.email = user.get('email', None)
 
-
 def create_token():
     return secrets.token_urlsafe(32)
-
 
 def load_metadata():
     if not METADATA_FILE.exists():
         return {}
     with open(METADATA_FILE) as f:
         return json.load(f)
-    
 
 def save_metadata(data):
     with open(METADATA_FILE, "w") as f:
@@ -62,14 +60,12 @@ def register_token(token):
 def profile_dir_for_token(token):
     return PROFILE_ROOT / token
 
-
 def build_session_from_playwright(context):
     session = requests.Session()
     storage = context.storage_state()
     for cookie in storage["cookies"]:
         session.cookies.set(cookie["name"], cookie["value"], domain=cookie["domain"], path=cookie["path"])
     return session
-
 
 def login_with_token(token):
     profile_dir = profile_dir_for_token(token)
