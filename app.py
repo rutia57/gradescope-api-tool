@@ -5,9 +5,7 @@ import datetime
 import analytics
 from collections import defaultdict
 import tempfile 
-import json 
-import pandas as pd
-import copy
+import json
 import os
 import uuid
 import traceback
@@ -28,6 +26,7 @@ from utils import (
     get_original_submissions_zip_bytes,
     get_graded_submissions_zip_bytes,
     get_assignment_outline_and_stats,
+    get_submission_summary,
     build_feedback_files,
     format_course_names,
     format_assignment_names,
@@ -229,12 +228,10 @@ if st.session_state.gs_conn is not None:
                         grades_metadata,
                         student_to_assignment_submissions,
                     )
-                    if st.toggle('Preview grade summary'):
+                    if st.toggle('Show grade summary preview'):
                         grade_summary_styled, grid_options, preview_height, custom_css = format_grade_summary_df(grade_summary)
                         df_pa_compatible, error_message = is_arrow_compatible(grade_summary_styled)
                         if df_pa_compatible:
-                            print("Duplicate columns?", grade_summary_styled.columns.duplicated().any())
-                            print("Auto id present?", "::auto_unique_id::" in grade_summary_styled.columns)
                             AgGrid(
                                 grade_summary_styled, 
                                 grid_options, 
@@ -244,12 +241,6 @@ if st.session_state.gs_conn is not None:
                                 custom_css=custom_css, 
                                 width='50%',
                             )
-                            print("Duplicate columns?", grade_summary_styled.columns.duplicated().any())
-                            print("Auto id present?", "::auto_unique_id::" in grade_summary_styled.columns)
-                            print("DF hash:", pd.util.hash_pandas_object(grade_summary_styled, index=True).sum())
-                            print("Grid options hash:", hash(json.dumps(grid_options, default=str, sort_keys=True)))
-                            print("Preview height:", preview_height)
-                            print("Columns:", grade_summary_styled.columns.tolist())
                         else: 
                             st.warning('Error loading preview – download .csv file below to see data.')
                             with st.expander('Show error traceback:'):
@@ -314,16 +305,16 @@ if st.session_state.gs_conn is not None:
                     st.caption('Students\' submitted PDF files and graded PDF files with feedback.')
                     with st.expander('Select students and preview submissions data', expanded=False):
                         st.multiselect('Select students', users_with_grades, default=users_with_grades, format_func=lambda x: f'{x.first_name+" "+x.last_name:<{max_student_name_length+1}} [{x.email_address}]', key='selected_students_submissions')
+                        original_submissions_bytes, successfully_downloaded_original_submission = get_original_submissions_zip_bytes(
+                            conn,
+                            course_id,
+                            assignment_id,
+                            assignment.name.replace(" ",""),
+                            [(student_to_assignment_submissions[s.identifier], s.first_name.replace(' ','_')+"_"+s.last_name.replace(' ','_')) for s in st.session_state.selected_students_submissions]
+                        )
                         with st.expander('Submissions summary'):
-                            # TODO Add submissions summary
-                            st.text('here goes a summary')
-                    original_submissions_bytes = get_original_submissions_zip_bytes(
-                        conn,
-                        course_id,
-                        assignment_id,
-                        assignment.name.replace(" ",""),
-                        [(student_to_assignment_submissions[s.identifier], s.first_name.replace(' ','_')+"_"+s.last_name.replace(' ','_')) for s in st.session_state.selected_students_submissions]
-                    )
+                            submission_summary_df = get_submission_summary(st.session_state.selected_students_submissions, grades_metadata, successfully_downloaded_original_submission)
+                            st.markdown(submission_summary_df.map(lambda x: x.replace('\n', '<br>') if isinstance(x, str) else x).to_html(escape=False, index=False, header=False), unsafe_allow_html=True)
                     download_original_submissions = st.download_button(
                         f'**Download original submissions for selected students ({len(st.session_state.selected_students_submissions)}) (.zip containing .pdf files)**', 
                         original_submissions_bytes,
@@ -385,7 +376,7 @@ if st.session_state.gs_conn is not None:
 
                     with export_button_col:
                         export_button = st.button(f"Export graded submissions with feedback for selected students ({len(st.session_state.selected_students_submissions)}) (.zip containing .pdf files)")
-                        st.caption('Warning: This export can take a while (up to ~30-60 mins) for classes with many (80+) students, even if not all students are selected. You\'ll get an email when the export is complete.')
+                        st.caption('🐌 Warning: This export can take a while (up to ~30-60 mins) for classes with many (80+) students, even if not all students are selected. You\'ll get an email when the export is complete.')
                         if export_button:
                             with st.spinner('Downloading graded submissions...', show_time=True):
                                 st.session_state.graded_submissions_bytes = get_graded_submissions_zip_bytes(

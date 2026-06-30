@@ -131,14 +131,16 @@ def get_submission_original_pdf_bytes(_conn, course_id, assignment_id, submissio
 @st.cache_data(ttl=3600)
 def get_original_submissions_zip_bytes(_conn, course_id, assignment_id, assignment_name, submission_ids_and_student_names): 
     output_zip = io.BytesIO()
+    successfully_downloaded = set()
     for submission_id, student_name in submission_ids_and_student_names:
         pdf_bytes = get_submission_original_pdf_bytes(_conn, course_id, assignment_id, submission_id)
         if pdf_bytes:
             with zipfile.ZipFile(output_zip, "a", compression=zipfile.ZIP_DEFLATED) as zout:
                 filename = f'{assignment_name}_{student_name}_{submission_id}_original_submission.pdf'
                 zout.writestr(filename, pdf_bytes)
+                successfully_downloaded.add(student_name)
     output_zip.seek(0)
-    return output_zip.getvalue()
+    return output_zip.getvalue(), successfully_downloaded
 
 @st.cache_data(ttl=3600)
 def filter_submission_zip(zip_bytes: bytes, submission_id_to_student_name_mapping, assignment_name, zip_file_name: str, submission_ids: set[str] | None=None) -> bytes:
@@ -196,10 +198,9 @@ def helper(conn, course_id, assignment_id, progress_callback):
         time.sleep(1)
     # download full .zip with all students 
     zip_file_url = f"{conn.account.gradescope_base_url}/courses/{course_id}/assignments/{assignment_id}/export.zip"
-    for i in range(5):
+    for _ in range(10):
         try: 
             resp = conn.account.session.get(zip_file_url)
-            print(i, zip_file_url, resp.text[:1000])
             zipfile.ZipFile(io.BytesIO(resp.content), "r")
             return resp.content
         except Exception:
@@ -701,6 +702,28 @@ def get_assignment_outline_and_stats(questions, questions_order, grade_breakdown
         )
     return pd.DataFrame(rows)
 
+def get_submission_summary(selected_students, grades_metadata, downloaded_pdf_students):
+    grades = []
+    pdfs_available = 0
+    for student in selected_students:
+        meta = grades_metadata[student.email_address]
+        if meta["score"] is not None:
+            grades.append(meta["score"])
+        if (student.first_name+'_'+student.last_name) in downloaded_pdf_students:
+            pdfs_available += 1
+    n = len(selected_students)
+    def fmt(x):
+        return f"{x:.2f}" if isinstance(x, float) else x
+    rows = [
+        ("Students selected", n),
+        ("Submission PDFs available", f"{pdfs_available} / {n}"),
+        ("Mean grade", fmt(mean(grades)) if grades else "—"),
+        ("Median grade", fmt(median(grades)) if grades else "—"),
+        ("Minimum grade", fmt(min(grades)) if grades else "—"),
+        ("Maximum grade", fmt(max(grades)) if grades else "—"),
+    ]
+    return pd.DataFrame(rows, columns=["Statistic", "Value"])
+
 ############################### Streamlit styling utils ###########################################
 multiline_renderer = JsCode("""
     class MultilineRenderer {
@@ -820,10 +843,6 @@ def format_grade_summary_df(df):
             col["hide"] = True
     preview_height = int((grade_summary_styled.iloc[:5].astype(str).map(lambda s: min(5, str(s).count("\n")+1)).max(axis=1)*22).sum())+5*22
     custom_css = {".ag-header-cell-label": {"justify-content": "flex-start",}, ".ag-header-cell-text": {"white-space": "pre-line","text-align": "left",}}
-
-    # print("DF columns:", list(grade_summary_styled.columns))
-    # print("Grid columns:", [c["field"] for c in grid_options["columnDefs"]])
-    # print(grade_summary_styled['_rowHeight'])
     return grade_summary_styled, grid_options, preview_height, custom_css
 
 def is_arrow_compatible(df):
