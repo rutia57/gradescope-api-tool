@@ -70,7 +70,7 @@ def build_session_from_playwright(context):
 def login_with_token(token):
     profile_dir = profile_dir_for_token(token)
     with sync_playwright() as p:
-        context = p.chromium.launch_persistent_context(str(profile_dir), headless=False, channel="chrome")
+        context = p.chromium.launch_persistent_context(str(profile_dir), headless=True)
         page = context.pages[0] if context.pages else context.new_page()
         page.goto(f'{BASE_URL}/login')
         page.wait_for_selector("text=Course Dashboard", timeout=0)
@@ -82,7 +82,7 @@ def login_with_token(token):
 def login_temporary():
     temp_profile_dir = tempfile.mkdtemp()
     with sync_playwright() as p:
-        context = p.chromium.launch_persistent_context(temp_profile_dir, headless=False, channel="chrome")
+        context = p.chromium.launch_persistent_context(temp_profile_dir, headless=True)
         page = context.pages[0] if context.pages else context.new_page()
         page.goto(f'{BASE_URL}/login')
         page.wait_for_selector("text=Course Dashboard", timeout=0)
