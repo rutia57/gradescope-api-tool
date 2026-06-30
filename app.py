@@ -397,7 +397,7 @@ if st.session_state.gs_conn is not None:
 
 
 try:
-    analytics.log_stats(firestore_key_file="firebase-key.json", firestore_collection_name=firestore_collection_name_key)
+    analytics.log_stats(firestore_key_file=key_file, firestore_collection_name=firestore_collection_name_key)
 except Exception:
     st.warning(f'Failed to save app analytics: {traceback.format_exc()}')
 
