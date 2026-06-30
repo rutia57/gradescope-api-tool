@@ -71,7 +71,7 @@ def login_with_token(token):
     profile_dir = profile_dir_for_token(token)
     with sync_playwright() as p:
         print("Launching browser...")
-        context = p.chromium.launch_persistent_context(str(profile_dir), headless=True)
+        context = p.chromium.launch_persistent_context(str(profile_dir), headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"],)
         print("Browser launched!")
         page = context.pages[0] if context.pages else context.new_page()
         print("Page created!")
@@ -86,9 +86,13 @@ def login_with_token(token):
 def login_temporary():
     temp_profile_dir = tempfile.mkdtemp()
     with sync_playwright() as p:
-        context = p.chromium.launch_persistent_context(temp_profile_dir, headless=True)
+        print("Launching browser...")
+        context = p.chromium.launch_persistent_context(temp_profile_dir, headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"],)
+        print("Browser launched!")
         page = context.pages[0] if context.pages else context.new_page()
+        print("Page created!")
         page.goto(f'{BASE_URL}/login')
+        print("Went to login!")
         page.wait_for_selector("text=Course Dashboard", timeout=0)
         user = page.evaluate("bugsnagClient.user")
         session = build_session_from_playwright(context)
