@@ -74,8 +74,8 @@ def login_with_token(token):
     profile_dir = profile_dir_for_token(token)
     with sync_playwright() as p:
         st.write("1 Launching browser...")
-        context = p.chromium.launch_persistent_context(str(profile_dir), headless=True, args=["--no-sandbox", "--disable-dev-shm-usage", "--single-process", "--no-zygote",],)
-        # context = p.chromium.launch_persistent_context(str(profile_dir), headless=False, channel="chrome")
+        # context = p.chromium.launch_persistent_context(str(profile_dir), headless=False, args=["--no-sandbox", "--disable-dev-shm-usage", "--single-process", "--no-zygote",],)
+        context = p.chromium.launch_persistent_context(str(profile_dir), headless=False)
         st.write("1 Browser launched!")
         page = context.pages[0] if context.pages else context.new_page()
         st.write("1 Page created!")
@@ -94,7 +94,7 @@ def login_temporary():
     os.makedirs(temp_profile_dir, exist_ok=True)
     with sync_playwright() as p:
         st.write("2 Launching browser...")
-        context = p.chromium.launch_persistent_context(temp_profile_dir, headless=True) # args=["--no-sandbox", "--disable-dev-shm-usage", "--single-process", "--no-zygote",],)
+        context = p.chromium.launch_persistent_context(temp_profile_dir, headless=False) # args=["--no-sandbox", "--disable-dev-shm-usage", "--single-process", "--no-zygote",],)
         # context = p.chromium.launch_persistent_context(temp_profile_dir, headless=False, channel="chrome")
         st.write("2 Browser launched!")
         page = context.pages[0] if context.pages else context.new_page()
