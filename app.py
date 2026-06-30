@@ -94,7 +94,7 @@ if os.path.exists("firebase-key.json"):
     firestore_collection_name_key = "gradescope-api-streamlit-counts-local"
 else:
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-        json.dump(json.loads(st.secrets["firebase_key"]), f)
+        json.dump(dict(st.secrets["firebase"]), f)
         key_file = f.name
         firestore_collection_name_key = "gradescope-api-streamlit-counts-prod"
 
