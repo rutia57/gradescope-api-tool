@@ -2,11 +2,8 @@ import secrets
 from pathlib import Path
 import tempfile
 import shutil
-import os
 import json
 from datetime import datetime, timedelta, timezone
-
-import streamlit as st 
 
 import requests
 from playwright.sync_api import sync_playwright
@@ -73,15 +70,9 @@ def build_session_from_playwright(context):
 def login_with_token(token):
     profile_dir = profile_dir_for_token(token)
     with sync_playwright() as p:
-        st.write("1 Launching browser...")
-        context = p.chromium.launch_persistent_context(str(profile_dir), headless=False, args=["--no-sandbox", "--disable-dev-shm-usage", "--single-process", "--no-zygote",],)
-        # context = p.chromium.launch_persistent_context(str(profile_dir), headless=False)
-        st.write("1 Browser launched!")
+        context = p.chromium.launch_persistent_context(str(profile_dir), headless=False, channel="chrome")
         page = context.pages[0] if context.pages else context.new_page()
-        st.write("1 Page created!")
-        st.write(f'1 {BASE_URL}/login')
         page.goto(f'{BASE_URL}/login')
-        st.write("1 Went to login!")
         page.wait_for_selector("text=Course Dashboard", timeout=0)
         user = page.evaluate("bugsnagClient.user")
         session = build_session_from_playwright(context)
@@ -90,18 +81,10 @@ def login_with_token(token):
 
 def login_temporary():
     temp_profile_dir = tempfile.mkdtemp()
-    shutil.rmtree(temp_profile_dir, ignore_errors=True)
-    os.makedirs(temp_profile_dir, exist_ok=True)
     with sync_playwright() as p:
-        st.write("2 Launching browser...")
-        context = p.chromium.launch_persistent_context(temp_profile_dir, headless=False, args=["--no-sandbox", "--disable-dev-shm-usage", "--single-process", "--no-zygote",],)
-        # context = p.chromium.launch_persistent_context(temp_profile_dir, headless=False, channel="chrome")
-        st.write("2 Browser launched!")
+        context = p.chromium.launch_persistent_context(temp_profile_dir, headless=False, channel="chrome")
         page = context.pages[0] if context.pages else context.new_page()
-        st.write("2 Page created!")
-        st.write(f'2 {BASE_URL}/login')
         page.goto(f'{BASE_URL}/login')
-        st.write("2 Went to login!")
         page.wait_for_selector("text=Course Dashboard", timeout=0)
         user = page.evaluate("bugsnagClient.user")
         session = build_session_from_playwright(context)

@@ -46,10 +46,9 @@ import warnings
 warnings.filterwarnings("ignore", message=".*cached function.*widget.*")
 
 import os
-
 PLAYWRIGHT_DIR = os.path.expanduser("~/.cache/ms-playwright")
 if not os.path.exists(PLAYWRIGHT_DIR):
-    subprocess.run(["playwright", "install", "chromium"], check=True)
+    subprocess.run(["playwright", "install"], check=True)
     
 cleanup_old_profiles()
 
