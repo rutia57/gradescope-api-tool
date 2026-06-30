@@ -70,9 +70,13 @@ def build_session_from_playwright(context):
 def login_with_token(token):
     profile_dir = profile_dir_for_token(token)
     with sync_playwright() as p:
+        print("Launching browser...")
         context = p.chromium.launch_persistent_context(str(profile_dir), headless=True)
+        print("Browser launched!")
         page = context.pages[0] if context.pages else context.new_page()
+        print("Page created!")
         page.goto(f'{BASE_URL}/login')
+        print("Went to login!")
         page.wait_for_selector("text=Course Dashboard", timeout=0)
         user = page.evaluate("bugsnagClient.user")
         session = build_session_from_playwright(context)
