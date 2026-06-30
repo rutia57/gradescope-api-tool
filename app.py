@@ -7,6 +7,7 @@ from collections import defaultdict
 import tempfile 
 import json
 import os
+import subprocess
 import uuid
 import traceback
 from st_aggrid import AgGrid
@@ -44,6 +45,12 @@ from gradescope_auth import (
 import warnings
 warnings.filterwarnings("ignore", message=".*cached function.*widget.*")
 
+import os
+
+PLAYWRIGHT_DIR = os.path.expanduser("~/.cache/ms-playwright")
+if not os.path.exists(PLAYWRIGHT_DIR):
+    subprocess.run(["playwright", "install", "chromium"], check=True)
+    
 cleanup_old_profiles()
 
 default_course_option = '<select a course>'
