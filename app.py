@@ -27,6 +27,7 @@ from utils import (
     get_grade_summary,
     get_original_submissions_zip_bytes,
     get_graded_submissions_zip_bytes,
+    get_assignment_outline_and_stats,
     build_feedback_files,
     format_course_names,
     format_assignment_names,
@@ -369,13 +370,16 @@ if st.session_state.gs_conn is not None:
                                     key=str(uuid.uuid4()),
                                 )
 
-                    st.markdown(f'#### 4. Assignment outline info')
-                    st.caption('Table with a summary of the questions on this assignment, including the rubric with possible comments, grader info, and grade stats.')
-                    with st.expander('Preview assignment outline info', expanded=False):
-                        st.table([[1,2,3,4],[1,2,3,4]]) # TODO
+                    st.markdown(f'#### 4. Assignment outline info & question stats')
+                    st.caption('Table with a summary of the questions on this assignment, including the rubric with possible comments, grader info, and grade stats for each question.')
+                    with st.expander('Preview assignment outline & question stats', expanded=False):
+                        assignment_outline_and_stats_df = get_assignment_outline_and_stats(questions, questions_order, grade_breakdowns, users_with_grades)
+                        st.markdown(assignment_outline_and_stats_df.map(lambda x: x.replace('\n', '<br>') if isinstance(x, str) else x).to_html(escape=False, index=False), unsafe_allow_html=True)
+
                     download_assignment_outline = st.download_button(
-                        '**Download assignment outline info (.csv file)**', 
-                        'TODO',
+                        '**Download assignment outline and question stats (.csv file)**', 
+                        assignment_outline_and_stats_df.to_csv(index=False),
+                        file_name=f'{assignment.name.replace(" ","")}_assignment_outline_and_question_stats_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.csv',
                         on_click=lambda: increment_button_count('download_assignment_outline'),
                     )   
 

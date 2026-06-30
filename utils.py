@@ -8,7 +8,7 @@ from typing import Literal
 import requests
 import time
 import io
-import copy
+from statistics import mean, median
 import numpy as np
 import zipfile
 import streamlit as st
@@ -19,7 +19,7 @@ import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import defaultdict
 from cachetools import cached, TTLCache
-from st_aggrid import GridOptionsBuilder, JsCode, AgGrid
+from st_aggrid import GridOptionsBuilder, JsCode
 import pyarrow as pa
 import traceback
 from numbers import Number
@@ -91,6 +91,7 @@ class GradeInfo:
     max_grade: float 
     comments_blurb: str
     question_title: str 
+    question_id: str
     grader: str 
     parent_item_id: str 
     parent_item_title: str
@@ -169,7 +170,6 @@ def filter_submission_zip(zip_bytes: bytes, submission_id_to_student_name_mappin
         print(zip_bytes)
         traceback.print_exc()
         return b''
-
             
 def ignore_some_args(conn, course_id, assignment_id, progress_callback):
     return hash((course_id, assignment_id))
@@ -536,6 +536,7 @@ def get_grade_breakdowns(students, questions, comments, total_scores, student_to
                                 questions[question_id].max_grade,
                                 format_tree(build_tree(comments[student_id][question_id])),
                                 questions[question_id].title,
+                                question_id,
                                 grader_by_question_submission[question_id][student_to_question_to_question_submission[student_id][question_id]] if question_id in student_to_question_to_question_submission[student_id] else None,
                                 question_id, 
                                 questions[question_id].title
@@ -548,6 +549,7 @@ def get_grade_breakdowns(students, questions, comments, total_scores, student_to
                                     questions[child.question_id].max_grade,
                                     format_tree(build_tree(comments[student_id][child.question_id])),
                                     questions[child.question_id].title,
+                                    child.question_id,
                                     grader_by_question_submission[child.question_id][student_to_question_to_question_submission[student_id][child.question_id]] if child.question_id in student_to_question_to_question_submission[student_id] else None,
                                     question_id, 
                                     questions[question_id].title
@@ -608,9 +610,96 @@ def build_feedback_files(assignment_title, assignment_max_grade, selected_studen
                 feedback_file_strs[student.identifier] = feedback
     return feedback_file_strs
 
-def get_assignment_outline_and_stats(idk): 
-    # TODO
-    return 'TODO'
+def get_assignment_outline_and_stats(questions, questions_order, grade_breakdowns, users_with_grades): 
+    def outline(question):
+        path = [question.title]
+        p = question.parent
+        while p is not None:
+            path = [p.title] + path
+            p = p.parent
+        return '\n'.join(["--"*i+p for (i,p) in enumerate(path)])
+    def rubric_string(question):
+        if not question.rubric_items:
+            return ""
+        items = list(question.rubric_items.values())
+        groups = {}
+        ungrouped = []
+        for item in items:
+            if item.rubric_group_id is None:
+                ungrouped.append(item)
+            else:
+                groups.setdefault(
+                    item.rubric_group_id,
+                    {
+                        "description": item.rubric_group_description,
+                        "items": [],
+                    },
+                )["items"].append(item)
+        def has_points(group):
+            return group.points != 0 if isinstance(group, RubricItem) else any(item.points != 0 for item in group["items"])
+        def format_item(item, indent=0):
+            if item.points > 0:
+                prefix = f"+{item.points:g} "
+            elif item.points < 0:
+                prefix = f"{item.points:g} "
+            else:
+                prefix = "+0 " if question.scoring_type == "positive" else f"{BULLETS[indent % len(BULLETS)]} "
+            return "    " * indent + prefix + item.description
+        # Stable partition: scored things first
+        group_list = list(groups.values())
+        all_items = ungrouped + group_list
+        all_items.sort(key=lambda g: not has_points(g))
+        lines = []
+        for item in all_items:
+            if isinstance(item, RubricItem):
+                lines.append(format_item(item))
+            else:
+                lines.append(f"{BULLETS[0]} {item['description']}")
+                item["items"].sort(key=lambda i: i.points == 0)
+                for item in item["items"]:
+                    lines.append(format_item(item, indent=1))
+        return "\n".join(lines)
+    def stats_string(scores):
+        scores = [x for x in scores if x is not None]
+        if not scores:
+            return ""
+        return f"Count: {len(scores)}\nMean: {mean(scores):.2f}\nMedian: {median(scores):.2f}"
+    def grader_stats_string(grader_scores):
+        pieces = []
+        for grader in sorted(grader_scores):
+            scores = [x for x in grader_scores[grader] if x is not None]
+            if not scores:
+                continue
+            pieces.append(f"{grader}\n  Count: {len(scores)}\n  Mean: {mean(scores):.2f}\n  Median: {median(scores):.2f}")
+        return "\n\n".join(pieces)
+    rows = []
+    for question in questions_order:
+        scores = []
+        grader_scores = defaultdict(list)
+        for user in users_with_grades:
+            if not any(g.question_id == question for g in grade_breakdowns[user.identifier]):
+                continue
+            breakdown = [g for g in grade_breakdowns[user.identifier] if g.question_id == question][0]
+            score = breakdown.total_score
+            grader = breakdown.grader
+            scores.append(score)
+            grader_name = (
+                grader.full_name
+                if hasattr(grader, "full_name")
+                else getattr(grader, "email_address", str(grader))
+            )
+            grader_scores[grader_name].append(score)
+        rows.append(
+            {
+                "Question": questions[question].title,
+                "Outline": outline(questions[question]),
+                "Max Points": questions[question].max_grade,
+                "Rubric": rubric_string(questions[question]),
+                "Stats": stats_string(scores),
+                "Stats by grader": grader_stats_string(grader_scores),
+            }
+        )
+    return pd.DataFrame(rows)
 
 ############################### Streamlit styling utils ###########################################
 multiline_renderer = JsCode("""
@@ -674,7 +763,6 @@ def make_aggrid_safe(df: pd.DataFrame) -> pd.DataFrame:
     return df.map(safe_cell)
 
 def format_grade_summary_df(df):
-    print('STYLING2')
     grade_summary_styled = df.copy()
 
     for col in grade_summary_styled.columns:
