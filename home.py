@@ -69,7 +69,7 @@ if st.session_state.session_from_ext is None:
 
 else: 
 
-    st.session_state['session_info'] = base64.b64decode(st.session_state.session_from_ext).decode("utf-8")
+    st.session_state['session_info'] = json.loads(base64.b64decode(st.session_state.session_from_ext).decode("utf-8"))
 
     default_course_option = '<select a course>'
     default_assignment_option = '<select an assignment>'
