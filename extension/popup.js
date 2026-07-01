@@ -1,6 +1,6 @@
 document.getElementById("open").addEventListener("click", async () => {
     await chrome.tabs.create({
-        url: "https://www.gradescope.com/login"
+        url: "https://www.gradescope.com"
     });
     window.close(); // closes the popup window
 });

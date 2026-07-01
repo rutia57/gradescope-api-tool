@@ -90,7 +90,6 @@ def login_with_cookies(cookies):
             if match:
                 user = json5.loads(match.group(1))
                 break
-    print(user)
     return GSConnectionFromSession(session, user), user
 
 def login_with_token(token):
