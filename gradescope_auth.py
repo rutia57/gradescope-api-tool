@@ -4,7 +4,6 @@ import tempfile
 import shutil
 import os
 import json
-import json5
 import html
 import re
 from bs4 import BeautifulSoup
@@ -83,12 +82,12 @@ def login_with_cookies(cookies):
     resp = session.get(BASE_URL)
     soup = BeautifulSoup(resp.text, "html.parser")
     scripts = soup.find_all("script")
-    user = {}
+    user = None
     for script in scripts:
         if script.string and "bugsnagClient.user" in script.string:
             match = re.search(r"bugsnagClient\.user\s*=\s*({.*?});", script.string)
             if match:
-                user = json5.loads(match.group(1))
+                user = match.group(1)
                 break
     return GSConnectionFromSession(session, user), user
 
