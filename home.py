@@ -169,8 +169,6 @@ else:
     #                     st.code(st.session_state.secret_token)
 
     st.session_state.gs_conn, user = login_with_cookies(st.session_state.session_info)
-    for (k,v) in st.query_params.items():
-        st.write(f"{k}={v}")
     st.success(f"✅ Successfully logged in to Gradescope as {user['name']} ({user['email']})")
 
     # Course tools
