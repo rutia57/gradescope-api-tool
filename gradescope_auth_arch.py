@@ -2,11 +2,7 @@ import secrets
 from pathlib import Path
 import tempfile
 import shutil
-import os
 import json
-import html
-import re
-from bs4 import BeautifulSoup
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -71,31 +67,10 @@ def build_session_from_playwright(context):
         session.cookies.set(cookie["name"], cookie["value"], domain=cookie["domain"], path=cookie["path"])
     return session
 
-def build_session_from_cookies(cookies):
-    session = requests.Session()
-    for cookie in cookies['cookies']:
-        session.cookies.set(cookie["name"], cookie["value"], domain=cookie["domain"], path=cookie["path"])
-    return session
-
-def login_with_cookies(cookies): 
-    session = build_session_from_cookies(cookies)
-    resp = session.get(BASE_URL)
-    soup = BeautifulSoup(resp.text, "html.parser")
-    scripts = soup.find_all("script")
-    user = None
-    for script in scripts:
-        if script.string and "bugsnagClient.user" in script.string:
-            match = re.search(r"bugsnagClient\.user\s*=\s*({.*?});", script.string)
-            if match:
-                user = match.group(1)
-                break
-    print(user)
-    return GSConnectionFromSession(session, user), user
-
 def login_with_token(token):
     profile_dir = profile_dir_for_token(token)
     with sync_playwright() as p:
-        context = p.chromium.launch_persistent_context(str(profile_dir), headless=False, args=["--no-sandbox", "--disable-dev-shm-usage", "--single-process", "--no-zygote",],)
+        context = p.chromium.launch_persistent_context(str(profile_dir), headless=False, channel="chrome")
         page = context.pages[0] if context.pages else context.new_page()
         page.goto(f'{BASE_URL}/login')
         page.wait_for_selector("text=Course Dashboard", timeout=0)
@@ -106,10 +81,8 @@ def login_with_token(token):
 
 def login_temporary():
     temp_profile_dir = tempfile.mkdtemp()
-    shutil.rmtree(temp_profile_dir, ignore_errors=True)
-    os.makedirs(temp_profile_dir, exist_ok=True)
     with sync_playwright() as p:
-        context = p.chromium.launch_persistent_context(temp_profile_dir, headless=False, args=["--no-sandbox", "--disable-dev-shm-usage", "--single-process", "--no-zygote",],)
+        context = p.chromium.launch_persistent_context(temp_profile_dir, headless=False, channel="chrome")
         page = context.pages[0] if context.pages else context.new_page()
         page.goto(f'{BASE_URL}/login')
         page.wait_for_selector("text=Course Dashboard", timeout=0)
@@ -129,46 +102,3 @@ def create_new_user():
     profile_dir.mkdir(parents=True, exist_ok=True)
     register_token(token)
     return token
-
-bookmarklet_code = r"""
-    javascript:(function(){
-        if(location.hostname!=="www.gradescope.com"){
-            alert("This tool can only be opened from an authenticated Gradescope session.\nPlease go to https://www.gradescope.com to log in, and once you're logged in, click the bookmark again to open the API tool.");
-            if (confirm("Open the Gradescope login page?")) {
-                window.open("https://www.gradescope.com/login", "_blank");
-            }
-            return;
-        }
-        const el = document.querySelector('input[name="authenticity_token"]');
-        if(!el){
-            alert("This tool can only be opened from an authenticated Gradescope session.\nPlease log in to Gradescope first, then click the bookmark to open the API tool.");
-            return;
-        }
-        const authToken = el.value;
-        const user = window.bugsnagClient?.user || {};
-
-        const cookieString = document.cookie
-            .split('; ')
-            .filter(Boolean)
-            .map(c => {
-                const i = c.indexOf('=');
-                const key = c.slice(0, i);
-                const value = c.slice(i + 1);
-                return `&${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
-            })
-            .join('');
-
-        const originalFetch = window.fetch;
-        window.fetch = async (...args) => {
-            console.log("FETCH REQUEST:", args);
-            const response = await originalFetch(...args);
-            return response;
-        };
-
-        window.location.href = "http://localhost:8501/?auth_token=" + encodeURIComponent(authToken) 
-                        + "&name=" + encodeURIComponent(user.name || "")
-                        + "&email=" + encodeURIComponent(user.email || "") + cookieString;;
-    })();
-    """
-
-bookmarklet_oneliner = html.escape(''.join([l.strip() for l in bookmarklet_code.split('\n')]), quote=True)
