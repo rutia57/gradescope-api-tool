@@ -854,3 +854,4 @@ def is_arrow_compatible(df):
         return True, None
     except Exception:
         return False, traceback.format_exc()
+    
