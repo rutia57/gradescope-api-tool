@@ -58,9 +58,9 @@ if st.session_state.session_from_ext is None:
         2) Go to https://www.gradescope.com to log in to Gradescope, and once you're logged in, click the extension.
         3) This will redirect you back to this tool where you can extract grade summary reports, grade feedback files, etc.
 
-        Whenever you're logged in on the Gradescope homepage, you can click the bookmark to launch the tool in a new tab.
+        Whenever you're logged in on any Gradescope page, you can click the bookmark to launch the tool in a new tab.
              
-        In the meantime (without being logged in to Gradescope), you can browse the sample reports below to see what data is 
+        In the meantime (without being logged in to Gradescope), you can browse some sample reports below to see what data is 
              available in this tool, the format of each of the reports, etc. 
     """)
     
