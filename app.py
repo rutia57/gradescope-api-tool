@@ -69,7 +69,7 @@ if st.session_state.session_from_ext is None:
 
 else: 
 
-    st.session_state['session_info'] = base64.b64decode(st.session_state.session_from_ext).decode("utf-8")
+    st.session_state['session_info'] = json.loads(base64.b64decode(st.session_state.session_from_ext).decode("utf-8"))
 
     default_course_option = '<select a course>'
     default_assignment_option = '<select an assignment>'
@@ -169,8 +169,6 @@ else:
     #                     st.code(st.session_state.secret_token)
 
     st.session_state.gs_conn, user = login_with_cookies(st.session_state.session_info)
-    for (k,v) in st.query_params.items():
-        st.write(f"{k}={v}")
     st.success(f"✅ Successfully logged in to Gradescope as {user['name']} ({user['email']})")
 
     # Course tools
