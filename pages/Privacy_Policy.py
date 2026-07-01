@@ -8,4 +8,4 @@ st.title("Privacy Policy")
 
 html = Path("privacy_policy.html").read_text()
 
-st.components.v1.html(html, height=2000, scrolling=True)
+st.html(html)
