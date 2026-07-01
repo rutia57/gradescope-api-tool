@@ -35,13 +35,8 @@ from utils import (
     is_arrow_compatible,
 )
 from gradescope_auth import (
-    create_new_user, 
-    login_with_token, 
-    login_temporary, 
-    save_profile_for_token,
     cleanup_old_profiles,
-    bookmarklet_oneliner,
-    build_session_from_token,
+    login_with_cookies,
 )
 
 import warnings
@@ -74,13 +69,12 @@ if st.session_state.session_from_ext is None:
 
 else: 
 
-    st.json(base64.b64decode(st.session_state.session_from_ext).decode("utf-8"))
+    st.session_state['session_info'] = base64.b64decode(st.session_state.session_from_ext).decode("utf-8")
 
-if False:
     default_course_option = '<select a course>'
     default_assignment_option = '<select an assignment>'
 
-    for var in ['gs_conn', 'secret_token', 'temp_profile_dir', 'selected_course_id', 'selected_assignment_id']:
+    for var in ['gs_conn', 'selected_course_id', 'selected_assignment_id']:
         if var not in st.session_state:
             st.session_state[var] = None
     if 'selected_course_name' not in st.session_state:
@@ -127,6 +121,9 @@ if False:
             firestore_collection_name_key = "gradescope-api-streamlit-counts-prod"
 
     # Connecting to Gradescope UI
+    # for var in ['secret_token', 'temp_profile_dir', ]: 
+    #     if var not in st.session_state:
+    #         st.session_state[var] = None
     # with st.expander('Connect to Gradescope', expanded=True):
     #     col1, col2 = st.columns([3, 3])
     #     with col1:
@@ -171,14 +168,10 @@ if False:
     #                         save_profile_for_token(st.session_state.temp_profile_dir, st.session_state.secret_token)
     #                     st.code(st.session_state.secret_token)
 
-    st.session_state.gs_conn = build_session_from_token(
-        st.session_state.user_name,
-        st.session_state.user_email,
-        st.session_state.gradescope_auth_token,
-    )
+    st.session_state.gs_conn, user = login_with_cookies(st.session_state.session_info)
     for (k,v) in st.query_params.items():
         st.write(f"{k}={v}")
-    st.success(f"✅ Successfully logged in to Gradescope as {st.session_state.user_name} ({st.session_state.user_email})")
+    st.success(f"✅ Successfully logged in to Gradescope as {user['name']} ({user['email']})")
 
     # Course tools
     if st.session_state.gs_conn is not None:

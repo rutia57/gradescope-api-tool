@@ -5,9 +5,9 @@ import shutil
 import os
 import json
 import html
-from datetime import datetime, timedelta, timezone
-import streamlit as st 
+import re
 from bs4 import BeautifulSoup
+from datetime import datetime, timedelta, timezone
 
 import requests
 from playwright.sync_api import sync_playwright
@@ -71,40 +71,32 @@ def build_session_from_playwright(context):
         session.cookies.set(cookie["name"], cookie["value"], domain=cookie["domain"], path=cookie["path"])
     return session
 
-def build_session_from_token(name, email, auth_token):
-    login_endpoint = f"{BASE_URL}/login"
-    session = requests.session()
-    login_data = {
-        "utf8": "✓",
-        "session[email]": email,
-        "session[remember_me]": 0,
-        "commit": "Log In",
-        "session[remember_me_sso]": 0,
-        "authenticity_token": auth_token,
-    }
-    login_resp = session.post(login_endpoint, params=login_data)
-    if len(login_resp.history) != 0 and login_resp.history[0].status_code == requests.codes.found:
-        soup = BeautifulSoup(login_resp.text, "html.parser")
-        csrf_token = soup.select_one('meta[name="csrf-token"]')["content"]
-        session.cookies.update(login_resp.cookies)
-        session.headers.update({"X-CSRF-Token": csrf_token})
-        st.text(f"We're successfully logged in with auth {auth_token}!")
-        return GSConnectionFromSession(session=session, user={'email': email, 'name': name})
-    return None
+def build_session_from_cookies(cookies):
+    session = requests.Session()
+    for cookie in cookies['cookies']:
+        session.cookies.set(cookie["name"], cookie["value"], domain=cookie["domain"], path=cookie["path"])
+    return session
 
+def login_with_cookies(cookies): 
+    session = build_session_from_cookies(cookies)
+    resp = session.get(BASE_URL)
+    soup = BeautifulSoup(resp.text, "html.parser")
+    scripts = soup.find_all("script")
+    user = None
+    for script in scripts:
+        if script.string and "bugsnagClient.user" in script.string:
+            match = re.search(r"bugsnagClient\.user\s*=\s*({.*?});", script.string)
+            if match:
+                user = match.group(1)
+                break
+    return GSConnectionFromSession(session, user), user
 
 def login_with_token(token):
     profile_dir = profile_dir_for_token(token)
     with sync_playwright() as p:
-        st.write("1 Launching browser...")
         context = p.chromium.launch_persistent_context(str(profile_dir), headless=False, args=["--no-sandbox", "--disable-dev-shm-usage", "--single-process", "--no-zygote",],)
-        # context = p.chromium.launch_persistent_context(str(profile_dir), headless=False)
-        st.write("1 Browser launched!")
         page = context.pages[0] if context.pages else context.new_page()
-        st.write("1 Page created!")
-        st.write(f'1 {BASE_URL}/login')
         page.goto(f'{BASE_URL}/login')
-        st.write("1 Went to login!")
         page.wait_for_selector("text=Course Dashboard", timeout=0)
         user = page.evaluate("bugsnagClient.user")
         session = build_session_from_playwright(context)
@@ -116,15 +108,9 @@ def login_temporary():
     shutil.rmtree(temp_profile_dir, ignore_errors=True)
     os.makedirs(temp_profile_dir, exist_ok=True)
     with sync_playwright() as p:
-        st.write("2 Launching browser...")
         context = p.chromium.launch_persistent_context(temp_profile_dir, headless=False, args=["--no-sandbox", "--disable-dev-shm-usage", "--single-process", "--no-zygote",],)
-        # context = p.chromium.launch_persistent_context(temp_profile_dir, headless=False, channel="chrome")
-        st.write("2 Browser launched!")
         page = context.pages[0] if context.pages else context.new_page()
-        st.write("2 Page created!")
-        st.write(f'2 {BASE_URL}/login')
         page.goto(f'{BASE_URL}/login')
-        st.write("2 Went to login!")
         page.wait_for_selector("text=Course Dashboard", timeout=0)
         user = page.evaluate("bugsnagClient.user")
         session = build_session_from_playwright(context)

@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Gradescope API Tool",
+  "version": "1.0",
+
+  "permissions": [
+    "cookies",
+    "tabs",
+    "notifications",
+    "scripting"
+  ],
+
+  "host_permissions": [
+    "https://www.gradescope.com/*"
+  ],
+
+  "background": {
+    "service_worker": "background.js"
+  },
+
+  "icons": {
+    "128": "icon.png"
+  },
+
+  "action": {
+      "default_icon": "icon.png"
+  }
+
+}

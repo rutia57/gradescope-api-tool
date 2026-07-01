@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Gradescope Tool</title>
+
+    <style>
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+        background: #f5f7fb;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+      }
+
+      .card {
+        width: 340px;
+        background: white;
+        border-radius: 14px;
+        padding: 22px 20px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+      }
+
+      h3 {
+        margin: 0 0 10px 0;
+        font-size: 20px;
+        font-weight: 600;
+        color: #111827;
+      }
+
+      p {
+        font-size: 14px;
+        line-height: 1.5;
+        color: #4b5563;
+        margin: 10px 0;
+      }
+
+      a {
+        color: #2563eb;
+        text-decoration: none;
+      }
+
+      a:hover {
+        text-decoration: underline;
+      }
+
+      .buttons {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 16px;
+      }
+
+      button {
+        border: none;
+        border-radius: 8px;
+        padding: 8px 14px;
+        font-size: 14px;
+        cursor: pointer;
+        transition: 0.15s ease;
+      }
+
+      #open {
+        background: #2563eb;
+        color: white;
+      }
+
+      #open:hover {
+        background: #1d4ed8;
+      }
+
+      #ok {
+        background: #e5e7eb;
+        color: #111827;
+      }
+
+      #ok:hover {
+        background: #d1d5db;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="card">
+      <h3>Gradescope Tool</h3>
+
+      <p>
+        This tool can only be opened from an authenticated Gradescope session.
+      </p>
+
+      <p>
+        Please go to
+        <a href="https://www.gradescope.com" target="_blank">Gradescope</a>,
+        log in, and click the extension again.
+      </p>
+
+      <div class="buttons">
+        <button id="ok">OK</button>
+        <button id="open">Open Gradescope</button>
+      </div>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
