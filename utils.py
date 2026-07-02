@@ -152,6 +152,8 @@ def format_course_names(courses_dict):
     } for role in course_roles])
 
 def format_assignment_names(assignments_list): 
+    if not assignments_list: 
+        return {}
     max_assignment_id_length = max(len(a.assignment_id) for a in assignments_list if a.assignment_id)
     return {f"{('['+(a.assignment_id or '<nan>')+']'):<{max_assignment_id_length+4}}{a.name}".replace(' ','\u00a0'):
              (a.assignment_id or '<nan>') for a in assignments_list}
