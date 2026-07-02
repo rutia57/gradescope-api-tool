@@ -17,7 +17,7 @@ from gradescope_auth import (
     cleanup_old_profiles,
     login_with_cookies,
 )
-from st_aggrid import AgGrid
+from st_aggrid import AgGrid  # type: ignore[import]
 from utils import (
     build_feedback_files,
     format_assignment_names,
@@ -295,7 +295,7 @@ with container:
                                             zf.writestr(f'{assignment.name.replace(" ","")}_{user_mapping[student_id].last_name}_{user_mapping[student_id].first_name}_grade_breakdown_and_feedback.txt', text)
                                     grade_feedback_files_zip_file_bytes = buffer.getvalue()
                             else: 
-                                grade_feedback_files_zip_file_bytes = ''
+                                grade_feedback_files_zip_file_bytes = b''
                         download_grade_feedback_files = st.download_button(
                             f'**Download grade feedback for selected students ({len(st.session_state.selected_students_grades)}) (.zip containing .txt files)**', 
                             grade_feedback_files_zip_file_bytes,

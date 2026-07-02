@@ -21,13 +21,13 @@ from typing import Literal
 
 import numpy as np
 import pandas as pd
-import pyarrow as pa
+import pyarrow as pa  # type: ignore[import-untyped]
 import requests
 import streamlit as st
 from bs4 import BeautifulSoup
 from cachetools import TTLCache, cached
 from gradescope_auth import SAMPLE_PLACEHOLDER_GS_CONN
-from st_aggrid import GridOptionsBuilder, JsCode
+from st_aggrid import GridOptionsBuilder, JsCode  # type: ignore[import]
 
 
 BULLETS = ['•', '◦', '▪']
