@@ -1,20 +1,19 @@
-import secrets
-from pathlib import Path
-import tempfile
-import shutil
-import os
-import json
-import json5
 import html
+import json
+import os
 import re
-from bs4 import BeautifulSoup
+import secrets
+import shutil
+import tempfile
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
+import json5
 import requests
-from playwright.sync_api import sync_playwright
-
-from gradescopeapi.classes.account import Account
+from bs4 import BeautifulSoup
 from gradescopeapi.api.constants import BASE_URL
+from gradescopeapi.classes.account import Account
+from playwright.sync_api import sync_playwright
 
 PROFILE_ROOT = Path("gradescope_profiles")
 PROFILE_ROOT.mkdir(exist_ok=True)

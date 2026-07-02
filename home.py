@@ -1,47 +1,48 @@
-import streamlit as st
-import io 
-import zipfile
-import datetime
-import analytics
-from collections import defaultdict
-import tempfile 
 import base64
+import datetime
+import io
 import json
 import os
-import uuid
+import tempfile
 import traceback
+import uuid
+import warnings
+import zipfile
+from collections import defaultdict
+
+import analytics
+import streamlit as st
+from gradescope_auth import (
+    SAMPLE_PLACEHOLDER_GS_CONN,
+    cleanup_old_profiles,
+    login_with_cookies,
+)
 from st_aggrid import AgGrid
 from utils import (
-    get_student_info,
-    get_instructor_info,
-    get_user_mapping,
+    build_feedback_files,
+    format_assignment_names,
+    format_course_names,
+    format_grade_summary_df,
+    get_assignment_outline_and_stats,
     get_assignment_questions,
-    get_raw_submissions_metadata,
-    get_grades_metadata,
-    get_student_to_assignment_submissions,
-    get_grader_by_question_submission,
-    get_question_to_question_submissions,
-    get_raw_data_by_question_submission,
     get_grade_breakdowns,
     get_grade_summary,
-    get_original_submissions_zip_bytes,
     get_graded_submissions_zip_bytes,
-    get_assignment_outline_and_stats,
+    get_grader_by_question_submission,
+    get_grades_metadata,
+    get_instructor_info,
+    get_original_submissions_zip_bytes,
+    get_question_to_question_submissions,
+    get_raw_data_by_question_submission,
+    get_raw_submissions_metadata,
+    get_student_info,
+    get_student_to_assignment_submissions,
     get_submission_summary,
-    build_feedback_files,
-    format_course_names,
-    format_assignment_names,
-    format_grade_summary_df,
+    get_user_mapping,
     is_arrow_compatible,
     placeholder_assignment_object,
 )
-from gradescope_auth import (
-    cleanup_old_profiles,
-    login_with_cookies,
-    SAMPLE_PLACEHOLDER_GS_CONN
-)
 
-import warnings
 warnings.filterwarnings("ignore", message=".*cached function.*widget.*")
     
 cleanup_old_profiles()
@@ -134,54 +135,6 @@ with container:
             json.dump(dict(st.secrets["firebase"]), f)
             key_file = f.name
             firestore_collection_name_key = "gradescope-api-streamlit-counts-prod"
-
-    # Connecting to Gradescope UI
-    # for var in ['secret_token', 'temp_profile_dir', ]: 
-    #     if var not in st.session_state:
-    #         st.session_state[var] = None
-    # with st.expander('Connect to Gradescope', expanded=True):
-    #     col1, col2 = st.columns([3, 3])
-    #     with col1:
-    #         st.text("Click the button below to log in to your Gradescope account.\nWhen a browser window with the login page opens, please log in to your account.")
-    #         col3, col4 = st.columns([4,4])
-    #         with col3:
-    #             token_input = st.text_input("Secret token", placeholder="Optional")
-    #         with col4: 
-    #             st.caption("")
-    #             st.caption("If you saved a token from a previous session, the app can reuse the associated browser profile so that you don't have to log in again.")
-    #         if st.button("Connect to Gradescope"):
-    #             try:
-    #                 with st.spinner("Opening browser and connecting to Gradescope...", show_time=True):
-    #                     if token_input.strip():
-    #                         token = token_input.strip()
-    #                         conn = login_with_token(token)
-    #                         st.session_state.secret_token = token
-    #                     else:
-    #                         conn, temp_profile_dir = login_temporary()
-    #                         st.session_state.temp_profile_dir = temp_profile_dir
-    #                 st.session_state.gs_conn = conn
-    #                 st.rerun()
-    #             except Exception as e:
-    #                 st.error(f"Login failed: {e}")
-    #     if st.session_state.gs_conn is not None:
-    #         with col2:
-    #             st.success("✅ Successfully connected to Gradescope")
-    #             st.text(f'You are now logged into Gradescope as {st.session_state.gs_conn.name} ({st.session_state.gs_conn.email}).')
-    #             st.caption(
-    #                 "Now that you're logged in, you can click the button below to generate a secret token to reuse next time " \
-    #                 "you use the app so that you don't have to log in to Gradescope again. If you choose to create a token, save it " \
-    #                 "somewhere safe. The app won't store your credentials , and your browser profile will only be accessible by " \
-    #                 "entering your secret token. Secret tokens will be automatically deleted 30 days after they're created."
-    #             )
-    #             col5, col6 = st.columns([1,3])
-    #             with col5:
-    #                 secret_token_button = st.button("Generate & Show Secret Token")
-    #             with col6:
-    #                 if secret_token_button:
-    #                     if st.session_state.temp_profile_dir and not st.session_state.secret_token:
-    #                         st.session_state.secret_token = create_new_user()
-    #                         save_profile_for_token(st.session_state.temp_profile_dir, st.session_state.secret_token)
-    #                     st.code(st.session_state.secret_token)
 
     if st.session_state.session_from_ext:
         st.session_state.gs_conn, user = login_with_cookies(st.session_state.session_info)

@@ -1,32 +1,34 @@
 from __future__ import annotations
-from functools import reduce
-import pandas as pd
-from bs4 import BeautifulSoup
-import json
-from dataclasses import dataclass, field
-from typing import Literal
-import requests
-import time
-import pickle
-from pathlib import Path
-import io
-from statistics import mean, median
-import numpy as np
-import zipfile
-import streamlit as st
-from st_aggrid import JsCode
-import re
-import html
+
 import datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from collections import defaultdict
-from cachetools import cached, TTLCache
-from st_aggrid import GridOptionsBuilder, JsCode
-import pyarrow as pa
+import html
+import io
+import json
+import pickle
+import re
+import time
 import traceback
+import zipfile
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
+from enum import StrEnum
+from functools import reduce, wraps
 from numbers import Number
-from functools import wraps
+from pathlib import Path
+from statistics import mean, median
+from typing import Literal
+
+import numpy as np
+import pandas as pd
+import pyarrow as pa
+import requests
+import streamlit as st
+from bs4 import BeautifulSoup
+from cachetools import TTLCache, cached
 from gradescope_auth import SAMPLE_PLACEHOLDER_GS_CONN
+from st_aggrid import GridOptionsBuilder, JsCode
+
 
 BULLETS = ['•', '◦', '▪']
 
@@ -120,6 +122,23 @@ class PlaceholderAssignment:
 
 placeholder_assignment_object = PlaceholderAssignment(assignment_id=None)
 
+class Endpoint(StrEnum):
+    MEMBERSHIP_ENDPOINT =               "{base_url}/courses/{course_id}/memberships"
+    RUBRIC_ENDPOINT =                   "{base_url}/courses/{course_id}/assignments/{assignment_id}/rubric/edit"
+    REVIEW_GRADES_ENDPOINT =            "{base_url}/courses/{course_id}/assignments/{assignment_id}/review_grades"
+    SUBMISSIONS_ENDPOINT =              "{base_url}/courses/{course_id}/assignments/{assignment_id}/submissions"
+    SUBMISSION_ENDPOINT =               "{base_url}/courses/{course_id}/assignments/{assignment_id}/submissions/{submission_id}"
+    QUESTION_SUBMISSIONS_ENDPOINT =     "{base_url}/courses/{course_id}/questions/{question_id}/submissions"
+    QUESTION_SUBMISSION_ENDPOINT =      "{base_url}/courses/{course_id}/questions/{question_id}/submissions/{question_submission_id}/grade"
+    EXPORT_ENDPOINT =                   "{base_url}/courses/{course_id}/assignments/{assignment_id}/export"
+    GRADED_SUBMISSIONS_ENDPOINT =       "{base_url}/courses/{course_id}/generated_files/{file_id}/"
+    ZIP_FILE_ENDPOINT =                 "{base_url}/courses/{course_id}/assignments/{assignment_id}/export.zip"
+
+def query_endpoint(endpoint: Endpoint, conn, *args, **kwargs):
+    url = endpoint.format(base_url=conn.account.gradescope_base_url, *args, **kwargs)
+    resp = conn.account.session.get(url)
+    return resp.content
+
 ############################### Format info for Streamlit ######################################
 def format_course_names(courses_dict): 
     course_roles = ['instructor', 'student']
@@ -139,6 +158,51 @@ def format_assignment_names(assignments_list):
 
 def get_user_mapping(users): 
     return {u.identifier: u for u in users}
+
+@st.cache_data(ttl=3600)
+def filter_submission_zip(zip_bytes: bytes, submission_id_to_student_name_mapping, assignment_name, zip_file_name: str, submission_ids: set[str] | None=None) -> bytes:
+    input_zip = io.BytesIO(zip_bytes)
+    output_zip = io.BytesIO()
+    try:
+        with zipfile.ZipFile(input_zip, "r") as zin:
+            with zipfile.ZipFile(output_zip, "w", compression=zipfile.ZIP_DEFLATED,) as zout:
+                for info in zin.infolist():
+                    filename = info.filename
+                    if filename.endswith("submission_metadata.yml"):
+                        zout.writestr(f"{zip_file_name}/{filename.split('/')[-1]}", zin.read(filename))
+                        continue
+                    basename = filename.rsplit("/", 1)[-1]
+                    if submission_ids:
+                        if any(submission_id.lower() in basename.lower() for submission_id in submission_ids):
+                            submission_id = [submission_id for submission_id in submission_ids if (submission_id.lower() in basename.lower())][0]
+                            student_name = submission_id_to_student_name_mapping[submission_id]
+                            zout.writestr(f"{zip_file_name}/{assignment_name}_{student_name}_{submission_id}_graded_submission.pdf", zin.read(filename))
+                    else: 
+                        submission_id = filename.split('/')[-1].split('.')[0]
+                        if submission_id in submission_id_to_student_name_mapping:
+                            student_name = submission_id_to_student_name_mapping[submission_id]
+                            zout.writestr(f"{zip_file_name}/{assignment_name}_{student_name}_{submission_id}_graded_submission.pdf", zin.read(filename))
+                        else: 
+                            zout.writestr(f"{zip_file_name}/{filename.split('/')[-1]}", zin.read(filename))
+        return output_zip.getvalue()
+    except Exception:
+        print(zip_bytes)
+        traceback.print_exc()
+        return b''
+            
+def ignore_some_args(conn, course_id, assignment_id, progress_callback):
+    return hash((course_id, assignment_id))
+
+def format_name(s): 
+    if s.first_name and s.last_name:
+        return s.first_name, s.last_name
+    name_parts = s.full_name.split(' ')
+    if len(name_parts) <= 1:
+        return '', s.full_name
+    elif len(name_parts) == 2: 
+        return f'{name_parts[0]}', f'{name_parts[1]}'
+    else: 
+        return f'{" ".join(name_parts[0:-1])}', f'{name_parts[-1]}'
 
 ############################# Get submission files from Gradescope #############################
 @st.cache_data(ttl=3600, hash_funcs={Question: lambda q: (q.course_id, q.assignment_id, q.question_id)})
@@ -180,40 +244,6 @@ def get_original_submissions_zip_bytes(_conn, course_id, assignment_id, assignme
                 successfully_downloaded.add(student_name)
     output_zip.seek(0)
     return output_zip.getvalue(), successfully_downloaded
-
-@st.cache_data(ttl=3600)
-def filter_submission_zip(zip_bytes: bytes, submission_id_to_student_name_mapping, assignment_name, zip_file_name: str, submission_ids: set[str] | None=None) -> bytes:
-    input_zip = io.BytesIO(zip_bytes)
-    output_zip = io.BytesIO()
-    try:
-        with zipfile.ZipFile(input_zip, "r") as zin:
-            with zipfile.ZipFile(output_zip, "w", compression=zipfile.ZIP_DEFLATED,) as zout:
-                for info in zin.infolist():
-                    filename = info.filename
-                    if filename.endswith("submission_metadata.yml"):
-                        zout.writestr(f"{zip_file_name}/{filename.split('/')[-1]}", zin.read(filename))
-                        continue
-                    basename = filename.rsplit("/", 1)[-1]
-                    if submission_ids:
-                        if any(submission_id.lower() in basename.lower() for submission_id in submission_ids):
-                            submission_id = [submission_id for submission_id in submission_ids if (submission_id.lower() in basename.lower())][0]
-                            student_name = submission_id_to_student_name_mapping[submission_id]
-                            zout.writestr(f"{zip_file_name}/{assignment_name}_{student_name}_{submission_id}_graded_submission.pdf", zin.read(filename))
-                    else: 
-                        submission_id = filename.split('/')[-1].split('.')[0]
-                        if submission_id in submission_id_to_student_name_mapping:
-                            student_name = submission_id_to_student_name_mapping[submission_id]
-                            zout.writestr(f"{zip_file_name}/{assignment_name}_{student_name}_{submission_id}_graded_submission.pdf", zin.read(filename))
-                        else: 
-                            zout.writestr(f"{zip_file_name}/{filename.split('/')[-1]}", zin.read(filename))
-        return output_zip.getvalue()
-    except Exception as e: 
-        print(zip_bytes)
-        traceback.print_exc()
-        return b''
-            
-def ignore_some_args(conn, course_id, assignment_id, progress_callback):
-    return hash((course_id, assignment_id))
 
 @sample_report_available
 @cached(cache=TTLCache(maxsize=100, ttl=3600), key=ignore_some_args)
@@ -301,20 +331,9 @@ def get_grades_metadata(_conn, course_id, assignment_id, instructors, users):
             results[email] = {"submission_id": submission_id, "student_name": student_name, "score": score, "submitted": True, "submitted_at": submitted_at}
     return default_instructor_results | results
 
-def format_name(s): 
-    if s.first_name and s.last_name:
-        return s.first_name, s.last_name
-    name_parts = s.full_name.split(' ')
-    if len(name_parts) <= 1:
-        return '', s.full_name
-    elif len(name_parts) == 2: 
-        return f'{name_parts[0]}', f'{name_parts[1]}'
-    else: 
-        return f'{" ".join(name_parts[0:-1])}', f'{name_parts[-1]}'
-
 @sample_report_available
 @st.cache_data(ttl=3600)
-def get_student_info(_conn, course_id) -> list[Student]: 
+def get_student_info(_conn, course_id) -> tuple[list[Student], int]: 
     # student metadata incl. name, ID, email
     members_list = _conn.account.get_course_users(course_id)
     if not members_list: 
@@ -418,7 +437,7 @@ def get_grader_by_question_submission(_conn, course_id, questions):
     # get (most recent) grader for each question submission (one per question per student)
     grader_by_question_submission = {}
     for question_id in questions: 
-        url = f'https://www.gradescope.com/courses/{course_id}/questions/{question_id}/submissions'
+        url = f'{_conn.account.gradescope_base_url}/courses/{course_id}/questions/{question_id}/submissions'
         resp = _conn.account.session.get(url)
         soup = BeautifulSoup(resp.text, "html.parser")
         table = soup.find("table", id="question_submissions")
