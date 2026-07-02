@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from typing import Literal
 import requests
 import time
+import pickle
+from pathlib import Path
 import io
 from statistics import mean, median
 import numpy as np
@@ -23,6 +25,8 @@ from st_aggrid import GridOptionsBuilder, JsCode
 import pyarrow as pa
 import traceback
 from numbers import Number
+from functools import wraps
+from gradescope_auth import SAMPLE_PLACEHOLDER_GS_CONN
 
 BULLETS = ['•', '◦', '▪']
 
@@ -96,6 +100,26 @@ class GradeInfo:
     parent_item_id: str 
     parent_item_title: str
 
+def sample_report_available(func):
+    @wraps(func)
+    def wrapper(_conn, *args, **kwargs):
+        if _conn != SAMPLE_PLACEHOLDER_GS_CONN:
+            return func(_conn, *args, **kwargs)
+        path = Path("sample_reports_data") / f"{func.__name__}.pkl"
+        with open(path, "rb") as f:
+            return pickle.load(f)
+    return wrapper
+
+@dataclass
+class PlaceholderAssignment: 
+    assignment_id: str | None
+    name: str = 'Assignment 1'
+    release_date: datetime.datetime = datetime.datetime.strptime("2026-01-28 00:00:00", "%Y-%m-%d %H:%M:%S")
+    due_date: datetime.datetime = datetime.datetime.strptime("2026-02-10 00:00:00", "%Y-%m-%d %H:%M:%S")
+    max_grade: str = '9.0'
+
+placeholder_assignment_object = PlaceholderAssignment(assignment_id=None)
+
 ############################### Format info for Streamlit ######################################
 def format_course_names(courses_dict): 
     course_roles = ['instructor', 'student']
@@ -130,6 +154,21 @@ def get_submission_original_pdf_bytes(_conn, course_id, assignment_id, submissio
 
 @st.cache_data(ttl=3600)
 def get_original_submissions_zip_bytes(_conn, course_id, assignment_id, assignment_name, submission_ids_and_student_names): 
+    if _conn == SAMPLE_PLACEHOLDER_GS_CONN: 
+        output_zip = io.BytesIO()
+        with open("sample_reports_data/get_original_submissions_zip_bytes.pkl", "rb") as f:
+            zip_bytes_original, _ = pickle.load(f)
+            input_zip = io.BytesIO(zip_bytes_original)
+            with zipfile.ZipFile(input_zip, "r") as zin:
+                with zipfile.ZipFile(output_zip, "w", compression=zipfile.ZIP_DEFLATED,) as zout:
+                    for info in zin.infolist():
+                        filename = info.filename
+                        submission_id = filename.split('_')[-3]
+                        if submission_id in (s[0] for s in submission_ids_and_student_names):
+                            zout.writestr(filename, zin.read(filename))
+        output_zip.seek(0)
+        return output_zip.getvalue(), {s[1] for s in submission_ids_and_student_names}
+
     output_zip = io.BytesIO()
     successfully_downloaded = set()
     for submission_id, student_name in submission_ids_and_student_names:
@@ -156,8 +195,8 @@ def filter_submission_zip(zip_bytes: bytes, submission_id_to_student_name_mappin
                         continue
                     basename = filename.rsplit("/", 1)[-1]
                     if submission_ids:
-                        if any(basename.lower().startswith(submission_id.lower())for submission_id in submission_ids):
-                            submission_id = [submission_id for submission_id in submission_ids if basename.lower().startswith(submission_id.lower())][0]
+                        if any(submission_id.lower() in basename.lower() for submission_id in submission_ids):
+                            submission_id = [submission_id for submission_id in submission_ids if (submission_id.lower() in basename.lower())][0]
                             student_name = submission_id_to_student_name_mapping[submission_id]
                             zout.writestr(f"{zip_file_name}/{assignment_name}_{student_name}_{submission_id}_graded_submission.pdf", zin.read(filename))
                     else: 
@@ -176,19 +215,20 @@ def filter_submission_zip(zip_bytes: bytes, submission_id_to_student_name_mappin
 def ignore_some_args(conn, course_id, assignment_id, progress_callback):
     return hash((course_id, assignment_id))
 
+@sample_report_available
 @cached(cache=TTLCache(maxsize=100, ttl=3600), key=ignore_some_args)
-def helper(conn, course_id, assignment_id, progress_callback):
-    review_grades_url = f"{conn.account.gradescope_base_url}/courses/{course_id}/assignments/{assignment_id}/review_grades"
-    review_grades_resp = conn.account.session.get(review_grades_url)
+def get_graded_submission_zip_bytes_helper(_conn, course_id, assignment_id, progress_callback):
+    review_grades_url = f"{_conn.account.gradescope_base_url}/courses/{course_id}/assignments/{assignment_id}/review_grades"
+    review_grades_resp = _conn.account.session.get(review_grades_url)
     csrf = BeautifulSoup(review_grades_resp.text, "html.parser").find("meta", {"name": "csrf-token"})["content"]
     headers = {"X-CSRF-Token": csrf, "X-Requested-With": "XMLHttpRequest", "Referer": review_grades_url, "Origin": "https://www.gradescope.com"}
-    export_endpoint = f"{conn.account.gradescope_base_url}/courses/{course_id}/assignments/{assignment_id}/export"
-    resp = conn.account.session.post(export_endpoint, headers=headers)
+    export_endpoint = f"{_conn.account.gradescope_base_url}/courses/{course_id}/assignments/{assignment_id}/export"
+    resp = _conn.account.session.post(export_endpoint, headers=headers)
     file_id = resp.json()["generated_file_id"]
     # poll
     while True:
-        graded_submissions_endpoint = f"{conn.account.gradescope_base_url}/courses/{course_id}/generated_files/{file_id}/"
-        resp = conn.account.session.get(graded_submissions_endpoint)
+        graded_submissions_endpoint = f"{_conn.account.gradescope_base_url}/courses/{course_id}/generated_files/{file_id}/"
+        resp = _conn.account.session.get(graded_submissions_endpoint)
         file_status_data = resp.json()
         if progress_callback:
             progress_callback(file_status_data["progress"])
@@ -197,10 +237,10 @@ def helper(conn, course_id, assignment_id, progress_callback):
             break
         time.sleep(1)
     # download full .zip with all students 
-    zip_file_url = f"{conn.account.gradescope_base_url}/courses/{course_id}/assignments/{assignment_id}/export.zip"
+    zip_file_url = f"{_conn.account.gradescope_base_url}/courses/{course_id}/assignments/{assignment_id}/export.zip"
     for _ in range(10):
         try: 
-            resp = conn.account.session.get(zip_file_url)
+            resp = _conn.account.session.get(zip_file_url)
             zipfile.ZipFile(io.BytesIO(resp.content), "r")
             return resp.content
         except Exception:
@@ -208,10 +248,11 @@ def helper(conn, course_id, assignment_id, progress_callback):
     return b'' 
 
 def get_graded_submissions_zip_bytes(_conn, course_id, assignment_id, submission_id_to_student_name_mapping, assignment_name, zip_file_name: str, submission_ids=None, _progress_callback=None): 
-    zip_bytes = helper(_conn, course_id, assignment_id, _progress_callback)
+    zip_bytes = get_graded_submission_zip_bytes_helper(_conn, course_id, assignment_id, _progress_callback)
     return filter_submission_zip(zip_bytes, submission_id_to_student_name_mapping, assignment_name, zip_file_name, submission_ids)
 
 ############################### Extract raw data from Gradescope ################################
+@sample_report_available
 @st.cache_data(ttl=3600)
 def get_raw_submissions_metadata(_conn, course_id, assignment_id): 
     # submissions metadata incl. IDs, time submitted, grading progress
@@ -219,6 +260,7 @@ def get_raw_submissions_metadata(_conn, course_id, assignment_id):
     resp = _conn.account.session.get(submissions_endpoint)
     return resp.json()
 
+@sample_report_available
 @st.cache_data(ttl=3600)
 def get_grades_metadata(_conn, course_id, assignment_id, instructors, users):
     # submissions grades metadata incl. total grade, submitted or not, and timestamp
@@ -270,6 +312,7 @@ def format_name(s):
     else: 
         return f'{" ".join(name_parts[0:-1])}', f'{name_parts[-1]}'
 
+@sample_report_available
 @st.cache_data(ttl=3600)
 def get_student_info(_conn, course_id) -> list[Student]: 
     # student metadata incl. name, ID, email
@@ -289,6 +332,7 @@ def get_student_info(_conn, course_id) -> list[Student]:
         max_student_name_len
     )
 
+@sample_report_available
 @st.cache_data(ttl=3600)
 def get_instructor_info(_conn, course_id) -> list[Student]: 
     # student metadata incl. name, ID, email
@@ -304,6 +348,7 @@ def get_instructor_info(_conn, course_id) -> list[Student]:
             'Instructor',
         ) for s in members_list if s.role!='Student'], key=lambda x: (x.last_name,x.first_name))
 
+@sample_report_available
 @st.cache_data(ttl=3600)
 def get_assignment_questions(_conn, course_id, assignment_id): 
     # question info incl. outline, max grade, available rubric items, scoring type, etc.
@@ -367,6 +412,7 @@ def load_single_question_submission_data(_conn, course_id, question_id, question
     assignment_submission_id = str(data["submission"]["assignment_submission_id"])
     return assignment_submission_id, question_id, question_submission_id, data
 
+@sample_report_available
 @st.cache_data(ttl=3600, hash_funcs={Question: lambda q: (q.course_id, q.assignment_id, q.question_id)})
 def get_grader_by_question_submission(_conn, course_id, questions):
     # get (most recent) grader for each question submission (one per question per student)
@@ -387,6 +433,7 @@ def get_grader_by_question_submission(_conn, course_id, questions):
             grader_by_question_submission[question_id][question_submission_id] = grader
     return grader_by_question_submission
 
+@sample_report_available
 @st.cache_data(ttl=3600, hash_funcs={Question: lambda q: (q.course_id, q.assignment_id, q.question_id)})
 def get_question_to_question_submissions(_conn, course_id, questions):
     question_to_submissions = defaultdict(list)
@@ -402,6 +449,7 @@ def get_question_to_question_submissions(_conn, course_id, questions):
             question_to_submissions[question_id].append(submission_id)
     return question_to_submissions
 
+@sample_report_available
 @st.cache_data(ttl=3600, hash_funcs={Question: lambda q: (q.course_id, q.assignment_id, q.question_id)})
 def get_raw_data_by_question_submission(_conn, course_id, students, questions, question_to_submissions, student_to_assignment_submissions):
     # given question metadata and mapping of IDs, extracts all grade and comment info

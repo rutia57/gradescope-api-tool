@@ -33,10 +33,12 @@ from utils import (
     format_assignment_names,
     format_grade_summary_df,
     is_arrow_compatible,
+    placeholder_assignment_object,
 )
 from gradescope_auth import (
     cleanup_old_profiles,
     login_with_cookies,
+    SAMPLE_PLACEHOLDER_GS_CONN
 )
 
 import warnings
@@ -44,32 +46,37 @@ warnings.filterwarnings("ignore", message=".*cached function.*widget.*")
     
 cleanup_old_profiles()
 
-st.set_page_config(page_title="Gradescope API Tool", page_icon="🎓")
+st.set_page_config(page_title="Gradescope API Tool", page_icon="extension/icon.png")
 st.set_page_config(layout='wide')
 st.markdown("# 🎓 Gradescope API Tool")
 st.session_state['session_from_ext'] = st.query_params.get("session_from_ext")
 
 if st.session_state.session_from_ext is None: 
-    st.write("""
-        Welcome to the Gradescope API tool! This tool lets you extract various info about assignments, submissions, grades, etc. 
-             for courses for which you're an instructor.
-        Here's how to use it:  
-        1) Install this Chrome extension: .
-        2) Go to https://www.gradescope.com to log in to Gradescope, and once you're logged in, click the extension.
-        3) This will redirect you back to this tool where you can extract grade summary reports, grade feedback files, etc.
+    with st.expander('Installation instructions', expanded=True):
+        st.write("""
+            Welcome to the Gradescope API tool! This tool lets you extract various info about assignments, submissions, grades, etc. 
+                for courses for which you're an instructor.
 
-        Whenever you're logged in on any Gradescope page, you can click the bookmark to launch the tool in a new tab.
-             
-        In the meantime (without being logged in to Gradescope), you can browse some sample reports below to see what data is 
-             available in this tool, the format of each of the reports, etc. 
-    """)
-    
-    if st.button('View sample reports'):
-        st.write('TODO')
+            Here's how to use it:  
+            1) Add this extension to Chrome: .
+            2) Go to https://www.gradescope.com to log in to Gradescope, and once you're logged in, click the icon of the extension.
+            3) This will redirect you back to this tool where you can extract grade summary reports, grade feedback files, etc.
 
+            Once you have the extension installed, whenever you're logged in on any Gradescope page, you can click on the extension to launch the tool in a new tab.
+        
+            In the meantime (without having the extension or being logged in to Gradescope), you can browse some sample reports below to see what data is 
+                available in this tool, what the UI looks like, the format of each of the reports, etc. 
+        """)
+
+if st.session_state.session_from_ext:
+    container = st.container()
 else: 
+    container = st.expander('View sample grade reports')
 
-    st.session_state['session_info'] = json.loads(base64.b64decode(st.session_state.session_from_ext).decode("utf-8"))
+with container:
+
+    if st.session_state.session_from_ext:
+        st.session_state['session_info'] = json.loads(base64.b64decode(st.session_state.session_from_ext).decode("utf-8"))
 
     default_course_option = '<select a course>'
     default_assignment_option = '<select an assignment>'
@@ -77,10 +84,18 @@ else:
     for var in ['gs_conn', 'selected_course_id', 'selected_assignment_id']:
         if var not in st.session_state:
             st.session_state[var] = None
-    if 'selected_course_name' not in st.session_state:
-        st.session_state['selected_course_name'] = default_course_option
-    if 'selected_assignment_name' not in st.session_state:
-        st.session_state['selected_assignment_name'] = default_assignment_option
+    if st.session_state.session_from_ext:
+        if 'selected_course_name' not in st.session_state:
+            st.session_state['selected_course_name'] = default_course_option
+        if 'selected_assignment_name' not in st.session_state:
+            st.session_state['selected_assignment_name'] = default_assignment_option
+    else: 
+        st.session_state['gs_conn'] = SAMPLE_PLACEHOLDER_GS_CONN 
+        if 'selected_course_name' not in st.session_state:
+            st.session_state['selected_course_name'] = 'TEST'
+        if 'selected_assignment_name' not in st.session_state:
+            st.session_state['selected_assignment_name'] = 'Assignment 1'
+
 
     if 'button_click_counts' not in st.session_state: 
         st.session_state['button_click_counts'] = defaultdict(lambda: defaultdict(int))
@@ -168,46 +183,51 @@ else:
     #                         save_profile_for_token(st.session_state.temp_profile_dir, st.session_state.secret_token)
     #                     st.code(st.session_state.secret_token)
 
-    st.session_state.gs_conn, user = login_with_cookies(st.session_state.session_info)
-    st.success(f"✅ Successfully logged in to Gradescope as {user['name']} ({user['email']})")
+    if st.session_state.session_from_ext:
+        st.session_state.gs_conn, user = login_with_cookies(st.session_state.session_info)
+        st.success(f"✅ Successfully logged in to Gradescope as {user['name']} ({user['email']})")
 
     # Course tools
     if st.session_state.gs_conn is not None:
         # Select course
-        st.markdown('## Assignment grades & feedback')
-        col7, col8 = st.columns([4,4])
-        with col7:
-            courses = st.session_state.gs_conn.account.get_courses()
-            course_name_mapping = format_course_names(courses)
-            selected_course = st.selectbox('Select a course to view assignment data:', 
-                                        options=[default_course_option] + list(course_name_mapping.keys()),
-                                        on_change=update_state_hash)
-            st.session_state.selected_course_id = course_name_mapping[selected_course] if selected_course in course_name_mapping else None
-            st.session_state.selected_course_name = selected_course
-        with col8:
-            if st.session_state.selected_course_id is not None:
-                # Load course assignments
-                assignments = st.session_state.gs_conn.account.get_assignments(st.session_state.selected_course_id)
-                assignment_name_mapping = format_assignment_names(assignments)
-                selected_assignment = st.selectbox('Select an assignment to view grade data:', 
-                                        options=[default_assignment_option] + list(assignment_name_mapping.keys()),
-                                        on_change=update_state_hash)
-                st.session_state.selected_assignment_id = assignment_name_mapping[selected_assignment] if selected_assignment in assignment_name_mapping else None
-                st.session_state.selected_assignment_name = selected_assignment
-            else:
-                st.session_state.selected_assignment_id = None
-                st.session_state.selected_assignment_name = None
-
+        st.markdown('## Assignment grades & feedback' if st.session_state.session_from_ext else '## Sample assignment grades & feedback')
+        if st.session_state.session_from_ext:
+            col7, col8 = st.columns([4,4])
+            with col7:
+                courses = st.session_state.gs_conn.account.get_courses()
+                course_name_mapping = format_course_names(courses)
+                selected_course = st.selectbox('Select a course to view assignment data:', 
+                                            options=[default_course_option] + list(course_name_mapping.keys()),
+                                            on_change=update_state_hash)
+                st.session_state.selected_course_id = course_name_mapping[selected_course] if selected_course in course_name_mapping else None
+                st.session_state.selected_course_name = selected_course
+            with col8:
+                if st.session_state.selected_course_id is not None:
+                    # Load course assignments
+                    assignments = st.session_state.gs_conn.account.get_assignments(st.session_state.selected_course_id)
+                    assignment_name_mapping = format_assignment_names(assignments)
+                    selected_assignment = st.selectbox('Select an assignment to view grade data:', 
+                                            options=[default_assignment_option] + list(assignment_name_mapping.keys()),
+                                            on_change=update_state_hash)
+                    st.session_state.selected_assignment_id = assignment_name_mapping[selected_assignment] if selected_assignment in assignment_name_mapping else None
+                    st.session_state.selected_assignment_name = selected_assignment
+                else:
+                    st.session_state.selected_assignment_id = None
+                    st.session_state.selected_assignment_name = None
+        else: 
+            assignments = [placeholder_assignment_object]
+            st.write('Viewing grade info for Assignment 1 for a sample course called TEST. \n\n When you open the tool from a logged in Gradescope session via the extension, '
+                     'you\'ll instead be able to choose a course from your Gradescope courses and choose an assignment from that course.')
 
         # Load assignment data
-        if st.session_state.selected_assignment_id is not None: 
+        if st.session_state.selected_assignment_id is not None or st.session_state.session_from_ext is None: 
             with st.spinner('Loading assignment data...', show_time=True):
                 if st.session_state.selected_assignment_id == '<nan>': 
                     st.warning('No grade data available for this assignment.')
                 else: 
                     try: 
                         conn = st.session_state.gs_conn
-                        assignment = [x for x in conn.account.get_assignments(st.session_state.selected_course_id) if x.assignment_id == st.session_state.selected_assignment_id][0]
+                        assignment = [x for x in assignments if x.assignment_id == st.session_state.selected_assignment_id][0]
                         assignment_id = st.session_state.selected_assignment_id
                         course_id = st.session_state.selected_course_id
 

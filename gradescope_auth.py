@@ -30,6 +30,8 @@ class GSConnectionFromSession:
         self.name = user.get('name', None)
         self.email = user.get('email', None)
 
+SAMPLE_PLACEHOLDER_GS_CONN = GSConnectionFromSession(None, {})
+
 def create_token():
     return secrets.token_urlsafe(32)
 
