@@ -14,7 +14,6 @@ import analytics
 import streamlit as st
 from gradescope_auth import (
     SAMPLE_PLACEHOLDER_GS_CONN,
-    cleanup_old_profiles,
     login_with_cookies,
 )
 from st_aggrid import AgGrid  # type: ignore[import]
@@ -45,8 +44,6 @@ from utils import (
 
 warnings.filterwarnings("ignore", message=".*cached function.*widget.*")
     
-cleanup_old_profiles()
-
 st.set_page_config(page_title="Gradescope API Tool", page_icon="extension/icon.png")
 st.set_page_config(layout='wide')
 st.markdown("# 🎓 Gradescope API Tool")
