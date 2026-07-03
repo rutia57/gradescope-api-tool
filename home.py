@@ -312,6 +312,11 @@ with container:
                         st.markdown(f'#### 3. Submissions')  
                         st.caption('Students\' submitted PDF files and graded PDF files with feedback.')
                         download_original_submissions_container = st.container()
+                        with download_original_submissions_container:
+                            download_original_submissions_expander = st.expander('Select students and preview submissions data', expanded=False)
+                            with download_original_submissions_expander:
+                                st.multiselect('Select students', users_with_grades, default=users_with_grades, format_func=lambda x: f'{x.first_name+" "+x.last_name:<{max_student_name_length+1}} [{x.email_address}]', key='selected_students_submissions')
+
                         export_button_col,c2,c3,_ = st.columns([4,3,1,2])
                         with c3: 
                             success_message_placeholder = st.empty()
@@ -383,8 +388,7 @@ with container:
                                     progress_cb(1.1)
 
                         with download_original_submissions_container:
-                            with st.expander('Select students and preview submissions data', expanded=False):
-                                st.multiselect('Select students', users_with_grades, default=users_with_grades, format_func=lambda x: f'{x.first_name+" "+x.last_name:<{max_student_name_length+1}} [{x.email_address}]', key='selected_students_submissions')
+                            with download_original_submissions_expander:
                                 with st.spinner('Downloading original PDF submissions...', show_time=True):
                                     original_submissions_bytes, successfully_downloaded_original_submission = get_original_submissions_zip_bytes(
                                         conn,
