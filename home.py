@@ -64,11 +64,13 @@ if st.session_state.session_from_ext is None:
 
             <p>1) Add this extension to Chrome:
             <a href="https://chromewebstore.google.com/detail/nhnebenbafkkclppjgmeegokeikljogo?utm_source=item-share-cb">
-            Gradescope API Tool Extension</a>. Optionally, pin it to your Chrome toolbar for easier access.</p>
+            Gradescope API Tool Extension</a>.</p>
+                    
+            <p>2) The extension should appear in your Chrome toolbar under "Extensions" (the puzzle icon to the right of the address bar). Optionally, pin the extension to your toolbar for easier access.</p>
 
-            <p>2) Go to <a href="https://www.gradescope.com">Gradescope</a> and log in.</p>
+            <p>3) Go to <a href="https://www.gradescope.com">Gradescope</a> and log in.</p>
 
-            <p>3) Once you're logged in, click the icon of the extension. This will redirect you back to this tool where you can extract grade summary reports, grade feedback files, etc.</p>
+            <p>4) Once you're logged in, click the icon of the extension. This will redirect you back to this tool where you can extract grade summary reports, grade feedback files, etc.</p>
 
             </div>
 
