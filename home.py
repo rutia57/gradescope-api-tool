@@ -309,27 +309,9 @@ with container:
                             file_name=f'{assignment.name.replace(" ","")}_grade_feedback_files_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
                             on_click=lambda: increment_button_count('download_grade_feedback_files')
                         )
-
                         st.markdown(f'#### 3. Submissions')  
                         st.caption('Students\' submitted PDF files and graded PDF files with feedback.')
-                        with st.expander('Select students and preview submissions data', expanded=False):
-                            st.multiselect('Select students', users_with_grades, default=users_with_grades, format_func=lambda x: f'{x.first_name+" "+x.last_name:<{max_student_name_length+1}} [{x.email_address}]', key='selected_students_submissions')
-                            original_submissions_bytes, successfully_downloaded_original_submission = get_original_submissions_zip_bytes(
-                                conn,
-                                course_id,
-                                assignment_id,
-                                assignment.name.replace(" ",""),
-                                [(student_to_assignment_submissions[s.identifier], s.first_name.replace(' ','_')+"_"+s.last_name.replace(' ','_')) for s in st.session_state.selected_students_submissions]
-                            )
-                            with st.expander('Submissions summary'):
-                                submission_summary_df = get_submission_summary(st.session_state.selected_students_submissions, grades_metadata, successfully_downloaded_original_submission)
-                                st.markdown(submission_summary_df.map(lambda x: x.replace('\n', '<br>') if isinstance(x, str) else x).to_html(escape=False, index=False, header=False), unsafe_allow_html=True)
-                        download_original_submissions = st.download_button(
-                            f'**Download original submissions for selected students ({len(st.session_state.selected_students_submissions)}) (.zip containing .pdf files)**', 
-                            original_submissions_bytes,
-                            file_name=f'{assignment.name.replace(" ","")}_original_submissions_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
-                            on_click=lambda: increment_button_count('download_original_submissions'),
-                        )
+                        download_original_submissions_container = st.container()
                         export_button_col,c2,c3,_ = st.columns([4,3,1,2])
                         with c3: 
                             success_message_placeholder = st.empty()
@@ -399,6 +381,28 @@ with container:
                                         _progress_callback=lambda n: progress_cb(n),
                                     )
                                     progress_cb(1.1)
+
+                        with download_original_submissions_container:
+                            with st.expander('Select students and preview submissions data', expanded=False):
+                                st.multiselect('Select students', users_with_grades, default=users_with_grades, format_func=lambda x: f'{x.first_name+" "+x.last_name:<{max_student_name_length+1}} [{x.email_address}]', key='selected_students_submissions')
+                                with st.spinner('Downloading original PDF submissions...', show_time=True):
+                                    original_submissions_bytes, successfully_downloaded_original_submission = get_original_submissions_zip_bytes(
+                                        conn,
+                                        course_id,
+                                        assignment_id,
+                                        assignment.name.replace(" ",""),
+                                        [(student_to_assignment_submissions[s.identifier], s.first_name.replace(' ','_')+"_"+s.last_name.replace(' ','_')) for s in st.session_state.selected_students_submissions]
+                                    )
+                                with st.expander('Submissions summary'):
+                                    submission_summary_df = get_submission_summary(st.session_state.selected_students_submissions, grades_metadata, successfully_downloaded_original_submission)
+                                    st.markdown(submission_summary_df.map(lambda x: x.replace('\n', '<br>') if isinstance(x, str) else x).to_html(escape=False, index=False, header=False), unsafe_allow_html=True)
+                            download_original_submissions = st.download_button(
+                                f'**Download original submissions for selected students ({len(st.session_state.selected_students_submissions)}) (.zip containing .pdf files)**', 
+                                original_submissions_bytes,
+                                file_name=f'{assignment.name.replace(" ","")}_original_submissions_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
+                                on_click=lambda: increment_button_count('download_original_submissions'),
+                            )
+
 
 
                     except NotImplementedError as e:
