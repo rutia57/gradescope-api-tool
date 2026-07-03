@@ -54,20 +54,28 @@ st.session_state['session_from_ext'] = st.query_params.get("session_from_ext")
 
 if st.session_state.session_from_ext is None: 
     with st.expander('Installation instructions', expanded=True):
-        st.write("""
-            Welcome to the Gradescope API tool! This tool lets you extract various info about assignments, submissions, grades, etc. 
-                for courses for which you're an instructor.
+        st.markdown("""
+            Welcome to the Gradescope API tool! This tool lets you extract various info about assignments, submissions, grades, etc.
+            for courses for which you're an instructor.
 
-            Here's how to use it:  
-            1) Add this extension to Chrome: .
-            2) Go to https://www.gradescope.com to log in to Gradescope, and once you're logged in, click the icon of the extension.
-            3) This will redirect you back to this tool where you can extract grade summary reports, grade feedback files, etc.
+            Here's how to use it:
+
+            <div style="margin-left:20px">
+
+            <p>1) Add this extension to Chrome:
+            <a href="https://chromewebstore.google.com/detail/nhnebenbafkkclppjgmeegokeikljogo?utm_source=item-share-cb">
+            Gradescope API Tool Extension</a>. Optionally, pin it to your Chrome toolbar for easier access.</p>
+
+            <p>2) Go to <a href="https://www.gradescope.com">Gradescope</a> and log in.</p>
+
+            <p>3) Once you're logged in, click the icon of the extension. This will redirect you back to this tool where you can extract grade summary reports, grade feedback files, etc.</p>
+
+            </div>
 
             Once you have the extension installed, whenever you're logged in on any Gradescope page, you can click on the extension to launch the tool in a new tab.
-        
-            In the meantime (without having the extension or being logged in to Gradescope), you can browse some sample reports below to see what data is 
-                available in this tool, what the UI looks like, the format of each of the reports, etc. 
-        """)
+
+            In the meantime, you can browse some sample reports below to see what data is available in this tool, what the UI looks like, the format of each of the reports, etc.
+            """, unsafe_allow_html=True)
 
 if st.session_state.session_from_ext:
     container = st.container()
@@ -169,8 +177,8 @@ with container:
                     st.session_state.selected_assignment_name = None
         else: 
             assignments = [placeholder_assignment_object]
-            st.write('Viewing grade info for Assignment 1 for a sample course called TEST. \n\n When you open the tool from a logged in Gradescope session via the extension, '
-                     'you\'ll instead be able to choose a course from your Gradescope courses and choose an assignment from that course.')
+            st.write('Viewing grade info for Assignment 1 for a sample course. \n\n When you open the tool from an authenticated Gradescope session via the extension, '
+                     'you\'ll instead be able to choose a course from your Gradescope courses and an assignment from that course.')
 
         # Load assignment data
         if st.session_state.selected_assignment_id is not None or st.session_state.session_from_ext is None: 
