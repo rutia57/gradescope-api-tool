@@ -182,7 +182,7 @@ with container:
 
         # Load assignment data
         if st.session_state.selected_assignment_id is not None or st.session_state.session_from_ext is None: 
-            with st.spinner('Loading assignment data...', show_time=True):
+            with st.spinner('Loading assignment data... (for larger courses, this may take a couple of minutes)', show_time=True):
                 if st.session_state.selected_assignment_id == '<nan>': 
                     st.warning('No grade data available for this assignment.')
                 else: 
@@ -386,7 +386,7 @@ with container:
 
                         with export_button_col:
                             export_button = st.button(f"Export graded submissions with feedback for selected students ({len(st.session_state.selected_students_submissions)}) (.zip containing .pdf files)")
-                            st.caption('🐌 Warning: This export can take a while (up to ~30-60 mins) for classes with many (80+) students, even if not all students are selected. You\'ll get an email when the export is complete.')
+                            st.caption('🐌 Warning: This export can take a while (up to ~30-60 mins if the Gradescope server is busy) for classes with many (80+) students, even if not all students are selected. You\'ll get an email when the export is complete.')
                             if export_button:
                                 with st.spinner('Downloading graded submissions...', show_time=True):
                                     st.session_state.graded_submissions_bytes = get_graded_submissions_zip_bytes(

@@ -3,6 +3,6 @@
 
 Streamlit tool to extract assignment &amp; grade info from Gradescope.
 
-The app is deployed here: https://gradescope-api-tool.streamlit.app/
+The app is deployed here: https://gradescope-api-tool.streamlit.app/.
 
-The Chrome extension (must be installed for the app to access Gradescope) can be installed here: 
+The Chrome extension (must be installed for the app to access Gradescope) can be installed here: https://gradescope-api-tool.streamlit.app/.
