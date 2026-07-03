@@ -867,7 +867,7 @@ def format_grade_summary_df(df):
         else:
             grade_summary_styled[col] = s.fillna("").astype("string")
 
-    grade_summary_styled["_rowHeight"] = grade_summary_styled.astype(str).map(lambda s: min(5, str(s).count("\n")+1)).max(axis=1)*25
+    grade_summary_styled["_rowHeight"] = grade_summary_styled.astype(str).map(lambda s: min(5, str(s).count("\n")+1)).max(axis=1)*250
     grade_summary_styled = make_aggrid_safe(grade_summary_styled)
     
     for col in grade_summary_styled.columns:
