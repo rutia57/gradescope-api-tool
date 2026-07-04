@@ -1,10 +1,10 @@
 import datetime
+from typing import Any
 
 import streamlit as st
 from google.cloud import firestore
 
-
-def stringify_keys(obj):
+def stringify_keys(obj: Any) -> Any:
     if isinstance(obj, dict):
         return {str(k): stringify_keys(v) for k, v in obj.items()}
     elif isinstance(obj, list):
@@ -12,14 +12,14 @@ def stringify_keys(obj):
     return obj
 
 
-def save_new_doc_to_firestore(data, doc_name, service_account_json, collection_name):
-    db = firestore.Client.from_service_account_json(service_account_json)
+def save_new_doc_to_firestore(data: dict[str, Any], doc_name: str, service_account_json: str, collection_name: str) -> None:
+    db = firestore.Client.from_service_account_json(service_account_json) # type: ignore
     col = db.collection(collection_name)
     doc = col.document(doc_name)
     doc.set(data)
 
 
-def log_stats(firestore_key_file, firestore_collection_name):
+def log_stats(firestore_key_file: str, firestore_collection_name: str) -> None:
     timestamp_str = datetime.datetime.now().isoformat()
     result = {
         "last_timestamp": timestamp_str,

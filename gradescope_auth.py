@@ -7,13 +7,14 @@ import shutil
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 import json5
 import requests
 from bs4 import BeautifulSoup
 from gradescopeapi.api.constants import BASE_URL
 from gradescopeapi.classes.account import Account
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, BrowserContext
 
 PROFILE_ROOT = Path("gradescope_profiles")
 PROFILE_ROOT.mkdir(exist_ok=True)
@@ -21,7 +22,7 @@ PROFILE_ROOT.mkdir(exist_ok=True)
 METADATA_FILE = PROFILE_ROOT / "metadata.json"
 
 class GSConnectionFromSession:
-    def __init__(self, session, user):
+    def __init__(self, session: requests.Session | None, user: dict[str, str]) -> None:
         self.session = session
         self.logged_in = True
         self.start_time = datetime.now().isoformat()
@@ -31,20 +32,20 @@ class GSConnectionFromSession:
 
 SAMPLE_PLACEHOLDER_GS_CONN = GSConnectionFromSession(None, {})
 
-def create_token():
+def create_token() -> str:
     return secrets.token_urlsafe(32)
 
-def load_metadata():
+def load_metadata() -> Any:
     if not METADATA_FILE.exists():
         return {}
     with open(METADATA_FILE) as f:
         return json.load(f)
 
-def save_metadata(data):
+def save_metadata(data: dict[str, Any]) -> None:
     with open(METADATA_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
-def cleanup_old_profiles(days=30):
+def cleanup_old_profiles(days: int = 30) -> None:
     data = load_metadata()
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     updated = {}
@@ -58,28 +59,28 @@ def cleanup_old_profiles(days=30):
             shutil.rmtree(profile_dir)
     save_metadata(updated)
 
-def register_token(token):
+def register_token(token: str) -> None:
     data = load_metadata()
     data[token] = datetime.now(timezone.utc).isoformat()
     save_metadata(data)
 
-def profile_dir_for_token(token):
+def profile_dir_for_token(token: str) -> Path:
     return PROFILE_ROOT / token
 
-def build_session_from_playwright(context):
+def build_session_from_playwright(context: BrowserContext) -> requests.Session:
     session = requests.Session()
     storage = context.storage_state()
     for cookie in storage["cookies"]:
         session.cookies.set(cookie["name"], cookie["value"], domain=cookie["domain"], path=cookie["path"])
     return session
 
-def build_session_from_cookies(cookies):
+def build_session_from_cookies(cookies: dict[str, Any]) -> requests.Session:
     session = requests.Session()
     for cookie in cookies['cookies']:
         session.cookies.set(cookie["name"], cookie["value"], domain=cookie["domain"], path=cookie["path"])
     return session
 
-def login_with_cookies(cookies): 
+def login_with_cookies(cookies: dict[str, Any]) -> tuple[GSConnectionFromSession, dict[str, str]]:
     session = build_session_from_cookies(cookies)
     resp = session.get(BASE_URL)
     soup = BeautifulSoup(resp.text, "html.parser")
@@ -93,7 +94,7 @@ def login_with_cookies(cookies):
                 break
     return GSConnectionFromSession(session, user), user
 
-def login_with_token(token):
+def login_with_token(token: str) -> GSConnectionFromSession:
     profile_dir = profile_dir_for_token(token)
     with sync_playwright() as p:
         context = p.chromium.launch_persistent_context(str(profile_dir), headless=False, args=["--no-sandbox", "--disable-dev-shm-usage", "--single-process", "--no-zygote",],)
@@ -105,7 +106,7 @@ def login_with_token(token):
         context.close()
     return GSConnectionFromSession(session, user)
 
-def login_temporary():
+def login_temporary() -> tuple[GSConnectionFromSession, str]:
     temp_profile_dir = tempfile.mkdtemp()
     shutil.rmtree(temp_profile_dir, ignore_errors=True)
     os.makedirs(temp_profile_dir, exist_ok=True)
@@ -120,11 +121,11 @@ def login_temporary():
     conn = GSConnectionFromSession(session, user)
     return conn, temp_profile_dir
 
-def save_profile_for_token(temp_profile_dir, token):
+def save_profile_for_token(temp_profile_dir: Path, token: str) -> None:
     destination = profile_dir_for_token(token)
     shutil.copytree(temp_profile_dir, destination, dirs_exist_ok=True)
 
-def create_new_user():
+def create_new_user() -> str:
     token = create_token()
     profile_dir = profile_dir_for_token(token)
     profile_dir.mkdir(parents=True, exist_ok=True)

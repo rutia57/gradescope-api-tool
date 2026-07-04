@@ -16,7 +16,7 @@ from gradescope_auth import (
     SAMPLE_PLACEHOLDER_GS_CONN,
     login_with_cookies,
 )
-from st_aggrid import AgGrid  # type: ignore[import]
+from st_aggrid import AgGrid  # type: ignore[import-untyped]
 from utils import (
     build_feedback_files,
     format_assignment_names,
@@ -123,7 +123,7 @@ with container:
     if "download_button_disabled" not in st.session_state: 
         st.session_state.download_button_disabled = True
 
-    def update_state_hash(): 
+    def update_state_hash() -> None: 
         st.session_state.state_hash = hash(
             f'{st.session_state.gs_conn.name if st.session_state.gs_conn is not None else None}_'
             f'{st.session_state.gs_conn.email if st.session_state.gs_conn is not None else None}_'
@@ -131,7 +131,7 @@ with container:
             f'{st.session_state.selected_course_name}_'
         )
 
-    def increment_button_count(button_name): 
+    def increment_button_count(button_name: str) -> None: 
         st.session_state.button_click_counts[st.session_state['state_hash']][button_name] += 1
 
     if os.path.exists("firebase-key.json"):
@@ -260,7 +260,7 @@ with container:
                             file_name=f'{assignment.name.replace(" ","")}_grades_summary_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.csv',
                             on_click=lambda: increment_button_count('download_grade_summary_report'),
                         )
-                        def update_selected_student_grade_preview(): 
+                        def update_selected_student_grade_preview() -> None: 
                             if st.session_state.selected_students_grades:
                                 st.session_state['selected_student_grade_preview'] = st.session_state.selected_students_grades[0]
                             else: 
@@ -331,7 +331,7 @@ with container:
                         )
                         with c2: 
                             progress_placeholder = st.empty()
-                            def progress_cb(n):
+                            def progress_cb(n: float) -> None:
                                 progress_placeholder.progress(min(n,1.0))
                                 if n <= 1:
                                     success_message_placeholder.empty()
@@ -379,10 +379,10 @@ with container:
                                         conn,
                                         course_id,
                                         assignment_id,
-                                        {submission_id: user_mapping[student_id].first_name.replace(' ','_')+"_"+user_mapping[student_id].last_name.replace(' ','_') for (student_id, submission_id) in student_to_assignment_submissions.items()},
+                                        {submission_id: user_mapping[student_id].first_name.replace(' ','_')+"_"+user_mapping[student_id].last_name.replace(' ','_') for (student_id, submission_id) in student_to_assignment_submissions.items() if submission_id},
                                         assignment.name,
                                         f'{assignment.name.replace(" ","")}_graded_submissions_with_comments_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}',
-                                        submission_ids=[student_to_assignment_submissions[s.identifier] for s in st.session_state.selected_students_submissions],
+                                        submission_ids={sub for sub in set([student_to_assignment_submissions[s.identifier] for s in st.session_state.selected_students_submissions]) if sub is not None},
                                         _progress_callback=lambda n: progress_cb(n),
                                     )
                                     progress_cb(1.1)
@@ -395,7 +395,14 @@ with container:
                                         course_id,
                                         assignment_id,
                                         assignment.name.replace(" ",""),
-                                        [(student_to_assignment_submissions[s.identifier], s.first_name.replace(' ','_')+"_"+s.last_name.replace(' ','_')) for s in st.session_state.selected_students_submissions]
+                                        [
+                                            (
+                                                sid,
+                                                f"{s.first_name.replace(' ', '_')}_{s.last_name.replace(' ', '_')}"
+                                            )
+                                            for s in st.session_state.selected_students_submissions
+                                            if (sid := student_to_assignment_submissions[s.identifier]) is not None
+                                        ]
                                     )
                                 with st.expander('Submissions summary'):
                                     submission_summary_df = get_submission_summary(st.session_state.selected_students_submissions, grades_metadata, successfully_downloaded_original_submission)
