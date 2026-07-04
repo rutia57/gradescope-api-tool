@@ -12,8 +12,7 @@ Your Streamlit app health check failed.
 
 The scheduled GitHub Action detected that the app did not load correctly or timed out.
 
-Check log here:
-https://gradescope-api-tool.streamlit.app/
+Check log here: https://github.com/rutia57/gradescope-api-tool/actions/workflows/ping_streamlit_app.yml 
 """
 
 msg = MIMEText(body)

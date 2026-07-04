@@ -12,5 +12,4 @@ with sync_playwright() as p:
     text = frame.locator("body").inner_text().lower()
     assert EXPECTED_TEXT in text, f'Expected "{EXPECTED_TEXT}" in:\n\n{text}' 
     browser.close() 
-    raise Exception("Streamlit health check failed: Expected text not found in the page.")
     print("Success!")
