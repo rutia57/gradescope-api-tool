@@ -8,7 +8,7 @@ EMAIL_TO = os.environ["EMAIL_TO"]
 
 subject = "🚨 Automatic Gradescope API Tool Streamlit Check Failed"
 body = """
-Your Streamlit app health check failed.
+Your Streamlit app (https://gradescope-api-tool.streamlit.app/) health check failed.
 
 The scheduled GitHub Action detected that the app did not load correctly or timed out.
 
