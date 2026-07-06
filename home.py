@@ -408,7 +408,7 @@ with container:
                                     submission_summary_df = get_submission_summary(st.session_state.selected_students_submissions, grades_metadata, successfully_downloaded_original_submission)
                                     st.markdown(submission_summary_df.map(lambda x: x.replace('\n', '<br>') if isinstance(x, str) else x).to_html(escape=False, index=False, header=False), unsafe_allow_html=True)
                             download_original_submissions = st.download_button(
-                                f'**Download original submissions for selected students ({len(st.session_state.selected_students_submissions)}) (.zip containing .pdf files)**', 
+                                f'**Download original submissions for selected students ({len(successfully_downloaded_original_submission)}) (.zip containing .pdf files)**', 
                                 original_submissions_bytes,
                                 file_name=f'{assignment.name.replace(" ","")}_original_submissions_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
                                 on_click=lambda: increment_button_count('download_original_submissions'),
