@@ -797,7 +797,7 @@ def get_submission_summary(selected_students: list[Student], grades_metadata: di
         meta = grades_metadata[student.email_address]
         if meta["score"] is not None:
             grades.append(meta["score"])
-        if (student.first_name+'_'+student.last_name) in downloaded_pdf_students:
+        if (f"{student.first_name.replace(' ', '_')}_{student.last_name.replace(' ', '_')}") in downloaded_pdf_students:
             pdfs_available += 1
     n = len(selected_students)
     def fmt(x: Any) -> Any:
