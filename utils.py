@@ -263,12 +263,12 @@ def get_graded_submission_zip_bytes_helper(_conn: Conn, course_id: str, assignme
     csrf = soup["content"]
     headers = {"X-CSRF-Token": csrf, "X-Requested-With": "XMLHttpRequest", "Referer": review_grades_url, "Origin": "https://www.gradescope.com"}
     export_endpoint = Endpoint.EXPORT.format(base_url=_conn.account.gradescope_base_url, course_id=course_id, assignment_id=assignment_id)
-    resp = _conn.account.session.post(export_endpoint, headers=headers)
-    file_id = resp.json()["generated_file_id"]
+    resp1 = _conn.account.session.post(export_endpoint, headers=headers)
+    file_id = resp1.json()["generated_file_id"]
     # poll
     while True:
-        resp = query_endpoint(Endpoint.GRADED_SUBMISSIONS, _conn, course_id=course_id, file_id=file_id)
-        file_status_data = resp.json()
+        resp2 = query_endpoint(Endpoint.GRADED_SUBMISSIONS, _conn, course_id=course_id, file_id=file_id)
+        file_status_data = resp2.json()
         if progress_callback is not None:
             progress_callback(file_status_data["progress"])
         if file_status_data["status"] == "completed":
@@ -279,9 +279,9 @@ def get_graded_submission_zip_bytes_helper(_conn: Conn, course_id: str, assignme
     # download full .zip with all students 
     for _ in range(10):
         try: 
-            resp = query_endpoint(Endpoint.ZIP_FILE, _conn, course_id=course_id, assignment_id=assignment_id)
-            zipfile.ZipFile(io.BytesIO(resp.content), "r")
-            return resp.content
+            resp3 = query_endpoint(Endpoint.ZIP_FILE, _conn, course_id=course_id, assignment_id=assignment_id)
+            zipfile.ZipFile(io.BytesIO(resp3.content), "r")
+            return resp3.content
         except Exception:
             time.sleep(1)
     return b'' 
@@ -926,9 +926,9 @@ def format_grade_summary_df(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, A
     grid_options["suppressAutoSize"] = False
     grid_options["suppressSizeToFit"] = True
     grid_options["defaultColDef"] = grid_options["defaultColDef"] | {"suppressSizeToFit": True}
-    for col in grid_options["columnDefs"]:
-        if col["field"] == "_rowHeight":
-            col["hide"] = True
+    for col2 in grid_options["columnDefs"]:
+        if col2["field"] == "_rowHeight":
+            col2["hide"] = True
     preview_height = int((grade_summary_styled.iloc[:5].astype(str).map(lambda s: min(5, str(s).count("\n")+1)).max(axis=1)*22).sum())+5*22
     custom_css = {".ag-header-cell-label": {"justify-content": "flex-start",}, ".ag-header-cell-text": {"white-space": "pre-line","text-align": "left",}}
     return grade_summary_styled, grid_options, preview_height, custom_css
