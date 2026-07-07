@@ -1,7 +1,8 @@
-gradescope_profiles/
-data/
+__pycache__/
+.mypy_cache/
 .venv/
 .vscode/
-__pycache__/
 .DS_Store
+gradescope_profiles/
+data/
 firebase-key.json

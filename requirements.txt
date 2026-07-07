@@ -103,6 +103,7 @@ toml==0.10.2
 tornado==6.5.7
 traitlets==5.15.1
 types-cachetools==7.0.0.20260518
+types-requests==2.33.0.20260518
 typing_extensions==4.15.0
 typing-inspection==0.4.2
 tzdata==2026.2
