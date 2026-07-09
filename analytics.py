@@ -60,7 +60,9 @@ def log_error(firestore_db: firestore.Client, error: Exception | str, context: s
             st.session_state.logged_errors_firestore = set()
         st.session_state.logged_errors_firestore.add(key)
 
-        print(f"WE ARE HERE, key: {key[:100]}")
+        if 'logging_runs' not in st.session_state:
+            st.session_state.logging_runs = ""
+        st.session_state.logging_runs += f"WE ARE HERE, key: {key[:100]}\n"
 
         firestore_db.collection("prod-errors").document(str(uuid.uuid4())).set({
             "timestamp": datetime.datetime.now(datetime.timezone.utc),
