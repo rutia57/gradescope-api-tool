@@ -15,14 +15,13 @@ def stringify_keys(obj: Any) -> Any:
     return obj
 
 
-def save_new_doc_to_firestore(data: dict[str, Any], doc_name: str, service_account_json: str, collection_name: str) -> None:
-    db = firestore.Client.from_service_account_json(service_account_json) # type: ignore
-    col = db.collection(collection_name)
+def save_new_doc_to_firestore(data: dict[str, Any], doc_name: str, firestore_db: firestore.Client, collection_name: str) -> None:
+    col = firestore_db.collection(collection_name)
     doc = col.document(doc_name)
     doc.set(data)
 
 
-def log_stats(firestore_key_file: str, firestore_collection_name: str) -> None:
+def log_stats(firestore_db: firestore.Client, firestore_collection_name: str) -> None:
     timestamp_str = datetime.datetime.now().isoformat()
     result = {
         "last_timestamp": timestamp_str,
@@ -47,15 +46,21 @@ def log_stats(firestore_key_file: str, firestore_collection_name: str) -> None:
     save_new_doc_to_firestore(
         stringify_keys(result),
         f"metadata_{str(st.session_state.session_id)}_{st.session_state.state_hash}",
-        firestore_key_file,
+        firestore_db,
         firestore_collection_name,
     )
 
 
-def log_error(firestore_key_file: str, error: Exception | str, context: str | None = None, state_hash: str | None = None) -> None:
-    error_db = firestore.Client.from_service_account_json(firestore_key_file) # type: ignore
+def log_error(firestore_db: firestore.Client, error: Exception | str, context: str | None = None, state_hash: str | None = None) -> None:
     try:
-        error_db.collection("prod-errors").document(str(uuid.uuid4())).set({
+        key = f"{context}:{error}:{traceback.format_exc()}"
+        if key in st.session_state.get("logged_errors", set()):
+            return
+        if "logged_errors" not in st.session_state:
+            st.session_state.logged_errors = set()
+        st.session_state.logged_errors.add(key)
+
+        firestore_db.collection("prod-errors").document(str(uuid.uuid4())).set({
             "timestamp": datetime.datetime.now(datetime.timezone.utc),
             "error": str(error),
             "traceback": traceback.format_exc(),
@@ -68,9 +73,9 @@ def log_error(firestore_key_file: str, error: Exception | str, context: str | No
 
 
 @contextmanager
-def error_logged_section(firestore_key_file: str, name: str) -> Generator[None, None, None]:
+def error_logged_section(firestore_db: firestore.Client, name: str) -> Generator[None, None, None]:
     try:
         yield
     except Exception as e:
-        log_error(firestore_key_file=firestore_key_file, error=e, context=name, state_hash=st.session_state.get("state_hash", ""))
+        log_error(firestore_db=firestore_db, error=e, context=name, state_hash=st.session_state.get("state_hash", ""))
         st.error(f"{name} failed: {e}")

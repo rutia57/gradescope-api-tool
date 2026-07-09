@@ -35,24 +35,24 @@ from st_aggrid import GridOptionsBuilder, JsCode  # type: ignore[import-untyped]
 BULLETS = ['•', '◦', '▪']
 
 @dataclass
-class RubricItem: 
-    rubric_item_id: str 
-    question_id: str 
-    points: float 
+class RubricItem:
+    rubric_item_id: str
+    question_id: str
+    points: float
     description: str
     rubric_group_id: str | None
     rubric_group_description: str | None
 
 @dataclass
-class Question: 
+class Question:
     course_id: str
     assignment_id: str
-    question_id: str 
+    question_id: str
     title: str
     scoring_type: Literal['negative', 'positive']
-    parent: Question | None 
-    children: list[Question] 
-    max_grade: float 
+    parent: Question | None
+    children: list[Question]
+    max_grade: float
     rubric_items: dict[str, RubricItem]
 
     def __eq__(self: Question, other: object) -> bool:
@@ -64,19 +64,19 @@ class Question:
         return hash((self.course_id,self.assignment_id,self.question_id))
 
 @dataclass
-class Student: 
+class Student:
     email_address: str
     first_name: str
     last_name: str
-    student_id: str 
+    student_id: str
     user_id: str | None
     role: str
     @property
     def identifier(self: Student) -> str:
         return self.user_id or self.email_address
-    
+
 @dataclass
-class RawCommentData: 
+class RawCommentData:
     item_id: str | None
     description: str | None
     points: float | None
@@ -94,14 +94,14 @@ class CommentNode:
     children: dict[str, "CommentNode"] = field(default_factory=dict)
 
 @dataclass
-class GradeInfo: 
-    total_score: float 
-    max_grade: float 
+class GradeInfo:
+    total_score: float
+    max_grade: float
     comments_blurb: str
-    question_title: str 
+    question_title: str
     question_id: str
     grader: str | None
-    parent_item_id: str 
+    parent_item_id: str
     parent_item_title: str
 
 F = TypeVar("F", bound=Callable[..., Any])
@@ -117,7 +117,7 @@ def sample_report_available(func: F) -> F:
     return wrapper # type: ignore
 
 @dataclass
-class PlaceholderAssignment: 
+class PlaceholderAssignment:
     assignment_id: str | None
     name: str = 'Assignment 1'
     release_date: datetime.datetime = datetime.datetime.strptime("2026-01-28 00:00:00", "%Y-%m-%d %H:%M:%S")
@@ -152,18 +152,18 @@ def format_course_names(courses_dict: dict[str, dict[str, Any]]) -> dict[str, st
     max_course_full_name_length = max(set.union(*[{len(v.full_name) for v in courses_dict[role].values()} for role in course_roles]))
     return reduce(lambda d1, d2: d1 | d2, [{
         f"{'['+course_id+']':<{max_course_id_length+3}}{course.name:<{max_course_name_length+1}}– ".replace(' ','\u00a0') +\
-        f"{course.full_name:<{max_course_full_name_length+1}}[{role}]".replace(' ','\u00a0'): course_id 
+        f"{course.full_name:<{max_course_full_name_length+1}}[{role}]".replace(' ','\u00a0'): course_id
         for (course_id, course) in courses_dict[role].items()
     } for role in course_roles])
 
 def format_assignment_names(assignments_list: list[Assignment]) -> dict[str, str]:
-    if not [a for a in assignments_list if a.assignment_id]: 
+    if not [a for a in assignments_list if a.assignment_id]:
         return {}
     max_assignment_id_length = max(len(a.assignment_id) for a in assignments_list if a.assignment_id)
     return {f"{('['+(a.assignment_id or '<nan>')+']'):<{max_assignment_id_length+4}}{a.name}".replace(' ','\u00a0'):
              (a.assignment_id or '<nan>') for a in assignments_list}
 
-def get_user_mapping(users: list[Student]) -> dict[str, Student]: 
+def get_user_mapping(users: list[Student]) -> dict[str, Student]:
     return {u.identifier: u for u in users}
 
 @st.cache_data(ttl=3600)
@@ -184,19 +184,19 @@ def filter_submission_zip(zip_bytes: bytes, submission_id_to_student_name_mappin
                             submission_id = [submission_id for submission_id in submission_ids if (submission_id.lower() in basename.lower())][0]
                             student_name = submission_id_to_student_name_mapping[submission_id]
                             zout.writestr(f"{zip_file_name}/{assignment_name}_{student_name}_{submission_id}_graded_submission.pdf", zin.read(filename))
-                    else: 
+                    else:
                         submission_id = filename.split('/')[-1].split('.')[0]
                         if submission_id in submission_id_to_student_name_mapping:
                             student_name = submission_id_to_student_name_mapping[submission_id]
                             zout.writestr(f"{zip_file_name}/{assignment_name}_{student_name}_{submission_id}_graded_submission.pdf", zin.read(filename))
-                        else: 
+                        else:
                             zout.writestr(f"{zip_file_name}/{filename.split('/')[-1]}", zin.read(filename))
         return output_zip.getvalue()
     except Exception:
         print(zip_bytes)
         traceback.print_exc()
         return b''
-            
+
 def ignore_some_args(conn: Any, course_id: str, assignment_id: str, progress_callback: Any) -> int:
     return hash((course_id, assignment_id))
 
@@ -209,9 +209,9 @@ def format_name(s: Student | Member) -> tuple[str, str]:
         name_parts = s.full_name.split(' ')
         if len(name_parts) <= 1:
             return '', s.full_name
-        elif len(name_parts) == 2: 
+        elif len(name_parts) == 2:
             return f'{name_parts[0]}', f'{name_parts[1]}'
-        else: 
+        else:
             return f'{" ".join(name_parts[0:-1])}', f'{name_parts[-1]}'
 
 ############################# Get submission files from Gradescope #############################
@@ -227,7 +227,7 @@ def get_submission_original_pdf_bytes(_conn: Conn, course_id: str, assignment_id
 
 @st.cache_data(ttl=3600)
 def get_original_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_id: str, assignment_name: str, submission_ids_and_student_names: list[tuple[str, str]]) -> tuple[bytes, set[str]]:
-    if _conn == SAMPLE_PLACEHOLDER_GS_CONN: 
+    if _conn == SAMPLE_PLACEHOLDER_GS_CONN:
         output_zip = io.BytesIO()
         with open("sample_reports_data/get_original_submissions_zip_bytes.pkl", "rb") as f:
             zip_bytes_original, _ = pickle.load(f)
@@ -276,17 +276,17 @@ def get_graded_submission_zip_bytes_helper(_conn: Conn, course_id: str, assignme
                 progress_callback(1.0)
             break
         time.sleep(1)
-    # download full .zip with all students 
+    # download full .zip with all students
     for _ in range(10):
-        try: 
+        try:
             resp3 = query_endpoint(Endpoint.ZIP_FILE, _conn, course_id=course_id, assignment_id=assignment_id)
             zipfile.ZipFile(io.BytesIO(resp3.content), "r")
             return resp3.content
         except Exception:
             time.sleep(1)
-    return b'' 
+    return b''
 
-def get_graded_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_id: str, submission_id_to_student_name_mapping: dict[str, str], assignment_name: str, zip_file_name: str, submission_ids: set[str] | None =None, _progress_callback: Callable[[float], Any] | None =None) -> bytes: 
+def get_graded_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_id: str, submission_id_to_student_name_mapping: dict[str, str], assignment_name: str, zip_file_name: str, submission_ids: set[str] | None =None, _progress_callback: Callable[[float], Any] | None =None) -> bytes:
     zip_bytes = get_graded_submission_zip_bytes_helper(_conn, course_id, assignment_id, _progress_callback)
     return filter_submission_zip(zip_bytes, submission_id_to_student_name_mapping, assignment_name, zip_file_name, submission_ids)
 
@@ -306,7 +306,7 @@ def get_grades_metadata(_conn: Conn, course_id: str, assignment_id: str, instruc
     soup = BeautifulSoup(resp.text, "html.parser")
     table = soup.find("table", class_="js-reviewGradesTable")
     assert table is not None, "Could not find review grades table in the review grades page"
-    thead = table.find("thead") 
+    thead = table.find("thead")
     assert thead is not None, "Could not find thead in the review grades table"
     headers = {th.get_text(" ", strip=True).lower(): i for i, th in enumerate(thead.find_all("th"))}
     def header_substr_to_cell(cells: list[Tag], header_substr: str) -> Tag | None:
@@ -314,7 +314,7 @@ def get_grades_metadata(_conn: Conn, course_id: str, assignment_id: str, instruc
             if header_substr.lower() in h.lower():
                 return cells[headers[h]]
         return None
-        
+
     tbody = table.find("tbody")
     assert tbody is not None, "Could not find tbody in the review grades table"
     default_instructor_results = {i.email_address: {"submission_id": None, "student_name": format_name(i), "score": None, "submitted": False, "submitted_at": None} for i in instructors}
@@ -324,7 +324,7 @@ def get_grades_metadata(_conn: Conn, course_id: str, assignment_id: str, instruc
         name_cell = header_substr_to_cell(cells, 'name')
         time_cell = header_substr_to_cell(cells, 'time')
         assert name_cell is not None, "Could not find name cell in the review grades table row"
-        assert time_cell is not None, "Could not find time cell in the review grades table row" 
+        assert time_cell is not None, "Could not find time cell in the review grades table row"
         link = name_cell.find("a")
         student_name = name_cell.get_text(strip=True)
         email_cell = header_substr_to_cell(cells, 'email')
@@ -335,7 +335,7 @@ def get_grades_metadata(_conn: Conn, course_id: str, assignment_id: str, instruc
                 results[email] = {"submission_id": None, "student_name": student_name, "score": None, "submitted": False, "submitted_at": None,}
             continue
         href = str(link["href"])
-        submission_id_match = re.search(r"/submissions/(\d+)", href) 
+        submission_id_match = re.search(r"/submissions/(\d+)", href)
         assert submission_id_match is not None, f"Could not find submission ID in the review grades table row link: {href}"
         submission_id = submission_id_match.group(1)
         student_name = link.get_text(strip=True)
@@ -351,43 +351,43 @@ def get_grades_metadata(_conn: Conn, course_id: str, assignment_id: str, instruc
 
 @sample_report_available
 @st.cache_data(ttl=3600)
-def get_student_info(_conn: Conn, course_id: str) -> tuple[list[Student], int]: 
+def get_student_info(_conn: Conn, course_id: str) -> tuple[list[Student], int]:
     # student metadata incl. name, ID, email
     members_list = _conn.account.get_course_users(course_id)
-    if not members_list: 
+    if not members_list:
         raise NotImplementedError("Grade breakdown analysis is currently only implemented for courses for which you are an instructor.")
     max_student_name_len = max([len(format_name(s)[0])+len(format_name(s)[1])+1 for s in members_list if s.role=='Student'])
     return (
         sorted([Student(
-            s.email, 
-            format_name(s)[0], 
-            format_name(s)[1], 
-            s.sid, 
+            s.email,
+            format_name(s)[0],
+            format_name(s)[1],
+            s.sid,
             s.user_id,
             'Student',
-        ) for s in members_list if s.role=='Student'], key=lambda x: (x.last_name,x.first_name)), 
+        ) for s in members_list if s.role=='Student'], key=lambda x: (x.last_name,x.first_name)),
         max_student_name_len
     )
 
 @sample_report_available
 @st.cache_data(ttl=3600)
-def get_instructor_info(_conn: Conn, course_id: str) -> list[Student]: 
+def get_instructor_info(_conn: Conn, course_id: str) -> list[Student]:
     # student metadata incl. name, ID, email
     members_list = _conn.account.get_course_users(course_id)
-    if not members_list: 
+    if not members_list:
         raise NotImplementedError("Grade breakdown analysis is currently only implemented for courses for which you are an instructor.")
     return sorted([Student(
-            s.email, 
-            format_name(s)[0], 
-            format_name(s)[1], 
-            s.sid, 
+            s.email,
+            format_name(s)[0],
+            format_name(s)[1],
+            s.sid,
             s.user_id,
             'Instructor',
         ) for s in members_list if s.role!='Student'], key=lambda x: (x.last_name,x.first_name))
 
 @sample_report_available
 @st.cache_data(ttl=3600)
-def get_assignment_questions(_conn: Conn, course_id: str, assignment_id: str) -> tuple[dict[str, Question], list[str]]: 
+def get_assignment_questions(_conn: Conn, course_id: str, assignment_id: str) -> tuple[dict[str, Question], list[str]]:
     # question info incl. outline, max grade, available rubric items, scoring type, etc.
     resp = query_endpoint(Endpoint.RUBRIC, _conn, course_id=course_id, assignment_id=assignment_id)
     if resp.status_code != 200:
@@ -398,41 +398,41 @@ def get_assignment_questions(_conn: Conn, course_id: str, assignment_id: str) ->
     props = json.loads(str(element["data-react-props"]))
     qs = dict()
     qs_order = []
-    for q in props['questions']: 
+    for q in props['questions']:
         qs_order.append(str(q['id']))
         qs[str(q['id'])] =  Question(
-            course_id=course_id, 
-            assignment_id=assignment_id, 
-            question_id=str(q['id']), 
-            title=q['title'], 
-            parent=None, 
-            children=[], 
-            max_grade=float(q['weight']), 
-            rubric_items={}, 
+            course_id=course_id,
+            assignment_id=assignment_id,
+            question_id=str(q['id']),
+            title=q['title'],
+            parent=None,
+            children=[],
+            max_grade=float(q['weight']),
+            rubric_items={},
             scoring_type=q['scoring_type']
         )
         if q['children']:
             for c in q['children']:
                 qs_order.append(str(c['id']))
                 qs[str(c['id'])] = Question(
-                    course_id=course_id, 
-                    assignment_id=assignment_id, 
-                    question_id=str(c['id']), 
-                    title=c['title'], 
-                    parent=qs[str(q['id'])], 
-                    children=[], 
-                    max_grade=float(c['weight']), 
-                    rubric_items={}, 
+                    course_id=course_id,
+                    assignment_id=assignment_id,
+                    question_id=str(c['id']),
+                    title=c['title'],
+                    parent=qs[str(q['id'])],
+                    children=[],
+                    max_grade=float(c['weight']),
+                    rubric_items={},
                     scoring_type=q['scoring_type']
                 )
                 qs[str(q['id'])].children.append(qs[str(c['id'])])
     for r in props['rubric_items']:
         qs[str(r['question_id'])].rubric_items[str(r['id'])] = RubricItem(
-            rubric_item_id=str(r['id']), 
-            question_id=str(r['question_id']), 
-            points=float(r['weight']) * (1 if qs[str(r['question_id'])].scoring_type=='positive' else -1), 
+            rubric_item_id=str(r['id']),
+            question_id=str(r['question_id']),
+            points=float(r['weight']) * (1 if qs[str(r['question_id'])].scoring_type=='positive' else -1),
             description=r['description'],
-            rubric_group_id=str(r['group_id']) if r['group_id'] else None, 
+            rubric_group_id=str(r['group_id']) if r['group_id'] else None,
             rubric_group_description=str([g for g in props['rubric_item_groups'] if g['id']==r['group_id']][0]['description']) if r['group_id'] else None
         )
     return qs, qs_order
@@ -453,11 +453,11 @@ def load_single_question_submission_data(_conn: Conn, course_id: str, question_i
 def get_grader_by_question_submission(_conn: Conn, course_id: str, questions: dict[str, Question]) -> dict[str, dict[str, str]]:
     # get (most recent) grader for each question submission (one per question per student)
     grader_by_question_submission: dict[str, dict[str, str]] = {}
-    for question_id in questions: 
+    for question_id in questions:
         resp = query_endpoint(Endpoint.QUESTION_SUBMISSIONS, _conn, course_id=course_id, question_id=question_id)
         soup = BeautifulSoup(resp.text, "html.parser")
         table = soup.find("table", id="question_submissions")
-        if not table: 
+        if not table:
             continue
         grader_by_question_submission[question_id] = {}
         for row in table.find_all("tr")[1:]:   # skip header
@@ -521,26 +521,26 @@ def get_raw_data_by_question_submission(_conn: Conn, course_id: str, students: l
                     student_to_question_to_question_submission[student_id][question_id] = question_submission_id
                     data = question_submission_to_comment_data[question_submission_id]
                     total_scores[student_id][question_id] = float(data['submission']['score']) if data['submission']['score'] else None
-                    for rubric_item_id, present in data['rubric_item_applications'].items(): 
-                        if present: 
+                    for rubric_item_id, present in data['rubric_item_applications'].items():
+                        if present:
                             rubric_item = questions[question_id].rubric_items[str(rubric_item_id)]
-                            if rubric_item.rubric_group_id: 
+                            if rubric_item.rubric_group_id:
                                 comments[student_id][question_id].append(RawCommentData(rubric_item.rubric_group_id, rubric_item.rubric_group_description, 0.0, rubric_item.rubric_item_id, rubric_item.description, rubric_item.points, False))
                             else:
                                 comments[student_id][question_id].append(RawCommentData(rubric_item.rubric_item_id, rubric_item.description, rubric_item.points, None, None, None, False))
-                    for annotation in data['annotations']: 
+                    for annotation in data['annotations']:
                         if annotation['links']:
                             for link in annotation['links']:
-                                if link['linkable_type'] == 'RubricItem': 
+                                if link['linkable_type'] == 'RubricItem':
                                     rubric_item = questions[question_id].rubric_items[str(link['rubric_item']['id'])]
                                     comments[student_id][question_id].append(RawCommentData(rubric_item.rubric_item_id, rubric_item.description, rubric_item.points, None, None, None, True))
                                     if link['annotation_comments']:
                                         for annotation_comment in link['annotation_comments']:
                                             comments[student_id][question_id].append(RawCommentData(rubric_item.rubric_item_id, rubric_item.description, rubric_item.points, f'{rubric_item.rubric_item_id}_comment', annotation_comment, None, False))
-                        elif annotation['content']: 
+                        elif annotation['content']:
                             comments[student_id][question_id].append(RawCommentData(None, annotation['content'], None, None, None, None, True))
                     if data['evaluation']:
-                        if data['evaluation']['comments'] or data['evaluation']['points']: 
+                        if data['evaluation']['comments'] or data['evaluation']['points']:
                             comments[student_id][question_id].append(RawCommentData(None, data['evaluation']['comments'] or '[point adjustment for this submission]', float(data['evaluation']['points']) if data['evaluation']['points'] else 0.0, None, None, None, False))
     return comments, total_scores, student_to_question_to_question_submission
 
@@ -548,7 +548,7 @@ def get_raw_data_by_question_submission(_conn: Conn, course_id: str, students: l
 def get_student_to_assignment_submissions(students: list[Student], submission_metadata: dict[str, dict[str, Any]], grades_metadata: dict[str, dict[str, Any]]) -> dict[str, str | None]:
     student_to_assignment_submissions: dict[str, str | None] = {student.identifier: None for student in students}
     for submission_id, submission_info in submission_metadata['detailed_submissions'].items():
-        for user in submission_info['active_user_ids']: 
+        for user in submission_info['active_user_ids']:
             if str(user) in student_to_assignment_submissions:
                 student_to_assignment_submissions[str(user)] = str(submission_id)
             elif any(data['submission_id']==str(submission_id) for (_id, data) in grades_metadata.items()):
@@ -595,7 +595,7 @@ def format_tree(roots: list[CommentNode]) -> str:
             prefix += f"+{node.points} "
         elif node.points is not None and node.points < 0:
             prefix += f"{node.points} "
-        else: 
+        else:
             prefix += f"{BULLETS[indent % len(BULLETS)]} "
         line = "    " * indent + " " * extra_indent + prefix + str(node.description)
         children = list(node.children.values())
@@ -610,7 +610,7 @@ def format_tree(roots: list[CommentNode]) -> str:
     return "\n".join(line for root in roots for line in format_node(root))
 
 def get_grade_breakdowns(students: list[Student], questions: dict[str, Question], comments: dict[str, dict[str, list[RawCommentData]]], total_scores: dict[str, dict[str, float]], student_to_question_to_question_submission: dict[str, dict[str, str]], grader_by_question_submission: dict[str, dict[str, str]], questions_order: list[str]) -> dict[str, list[GradeInfo]]:
-    # gets list of GradeInfo objects for all questions for each student 
+    # gets list of GradeInfo objects for all questions for each student
     results: dict[str, list[GradeInfo]] = {}
     for student in students:
         student_id = student.identifier
@@ -618,7 +618,7 @@ def get_grade_breakdowns(students: list[Student], questions: dict[str, Question]
         if student_id in comments:
             for question_id in questions:
                 if not questions[question_id].parent:
-                    if not questions[question_id].children: 
+                    if not questions[question_id].children:
                         if question_id in comments[student_id]:
                             results[student_id].append(GradeInfo(
                                 total_scores[student_id][question_id],
@@ -627,10 +627,10 @@ def get_grade_breakdowns(students: list[Student], questions: dict[str, Question]
                                 questions[question_id].title,
                                 question_id,
                                 grader_by_question_submission[question_id][student_to_question_to_question_submission[student_id][question_id]] if question_id in student_to_question_to_question_submission[student_id] else None,
-                                question_id, 
+                                question_id,
                                 questions[question_id].title
                             ))
-                    else: 
+                    else:
                         for child in questions[question_id].children:
                             if child.question_id in comments[student_id]:
                                 results[student_id].append(GradeInfo(
@@ -640,7 +640,7 @@ def get_grade_breakdowns(students: list[Student], questions: dict[str, Question]
                                     questions[child.question_id].title,
                                     child.question_id,
                                     grader_by_question_submission[child.question_id][student_to_question_to_question_submission[student_id][child.question_id]] if child.question_id in student_to_question_to_question_submission[student_id] else None,
-                                    question_id, 
+                                    question_id,
                                     questions[question_id].title
                                 ))
         results[student_id] = sorted(results[student_id], key=lambda g: questions_order.index(g.parent_item_id) if g.parent_item_id in questions_order else len(results[student_id]))
@@ -651,11 +651,11 @@ def get_grade_summary(assignment_title: str, assignment_due_date: str, assignmen
     cols = [f"{assignment_title}\nDue {assignment_due_date}\n\nName", "Email", "Submitted", "Submission ID"]
     cols_set = set(cols)
     rows = []
-    for student_id, grade_breakdown in grade_breakdowns.items(): 
+    for student_id, grade_breakdown in grade_breakdowns.items():
         student = student_mapping[student_id]
-        if student_id in set(s.identifier for s in selected_students): 
+        if student_id in set(s.identifier for s in selected_students):
             if student.role == 'Student' or grades_metadata[student.email_address]['submitted']:
-                if not grades_metadata[student.email_address]['submitted']: 
+                if not grades_metadata[student.email_address]['submitted']:
                     rows.append({f"{assignment_title}\nDue {assignment_due_date}\n\nName": student.first_name + " " + student.last_name, "Email": student.email_address, "Notes": "No submission"})
                     continue
                 row: dict[str, Any]= {f"{assignment_title}\nDue {assignment_due_date}\n\nName": student.first_name + " " + student.last_name, "Email": student.email_address}
@@ -670,17 +670,17 @@ def get_grade_summary(assignment_title: str, assignment_due_date: str, assignmen
                         score += (grade_info.total_score or 0.0)
                     row[f'{parent_question_title} TOTAL\n/{questions[parent_question_id].max_grade}'] = score
                 row[f'Assignment TOTAL\n/{assignment_max_grade}'] = grades_metadata[student.email_address]["score"]
-                for k in row: 
-                    if k not in cols_set: 
+                for k in row:
+                    if k not in cols_set:
                         cols_set.add(k)
-                        cols.append(k) 
+                        cols.append(k)
                 rows.append(row)
     cols.append('Notes')
     return pd.DataFrame(rows, columns=cols)
 
 def build_feedback_files(assignment_title: str, assignment_max_grade: float, selected_students: list[Student], questions: dict[str, Question], student_mapping: dict[str, Student], grade_breakdowns: dict[str, list[GradeInfo]], grades_metadata: dict[str, dict[str, Any]]) -> dict[str, str]:
     feedback_file_strs = {}
-    for student_id, grade_breakdown in grade_breakdowns.items(): 
+    for student_id, grade_breakdown in grade_breakdowns.items():
         student = student_mapping[student_id]
         if student_id in set(s.identifier for s in selected_students):
             if grades_metadata[student.email_address]['submitted']:
@@ -815,7 +815,7 @@ def get_submission_summary(selected_students: list[Student], grades_metadata: di
 ############################### Streamlit styling utils ###########################################
 multiline_renderer = JsCode("""
     class MultilineRenderer {
-        init(params) {                
+        init(params) {
             this.eGui = document.createElement("div");
             this.eGui.style.whiteSpace = "pre";
             this.eGui.style.overflow = "auto";
@@ -888,7 +888,7 @@ def format_grade_summary_df(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, A
 
     grade_summary_styled["_rowHeight"] = grade_summary_styled.astype(str).map(lambda s: min(5, str(s).count("\n")+1)).max(axis=1)*30
     grade_summary_styled = make_aggrid_safe(grade_summary_styled)
-    
+
     for col in grade_summary_styled.columns:
         grade_summary_styled[col] = grade_summary_styled[col].astype(object)
         grade_summary_styled.loc[grade_summary_styled[col].isna(), col] = None
@@ -912,7 +912,7 @@ def format_grade_summary_df(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, A
         if any(x in name for x in ("email","due","submitted","submission id")):
             cell_width = max([0 if x is None else max([len(line) for line in str(x).split("\n")], default=0) for x in grade_summary_styled[col]], default=0)
             width = max(header_width, cell_width)
-        elif "comments" in name: 
+        elif "comments" in name:
             cell_width = max([0 if x is None else max([len(line) for line in str(x).split("\n")], default=0) for x in grade_summary_styled[col]], default=0)
             width = min(30, max(header_width, cell_width))
         else:
@@ -938,8 +938,8 @@ def is_arrow_compatible(df: pd.DataFrame) -> tuple[bool, str | None]:
         pa.Table.from_pandas(df)
         for col in df.columns:
             json.dumps(df[col].tolist(), allow_nan=False)[:100]
-        st.session_state.df_pa_compatible_count = st.session_state.get('df_pa_compatible_count',0)+1 
+        st.session_state.df_pa_compatible_count = st.session_state.get('df_pa_compatible_count',0)+1
         return True, None
     except Exception:
         return False, traceback.format_exc()
-    
+

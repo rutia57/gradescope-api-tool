@@ -1,4 +1,4 @@
-from pathlib import Path 
+from pathlib import Path
 import streamlit as st
 
 st.set_page_config(page_title="Privacy Policy")

@@ -7,7 +7,7 @@ import shutil
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import json5
 import requests
@@ -133,11 +133,12 @@ def create_new_user() -> str:
     register_token(token)
     return token
 
-def read_session_doc_from_firestore(session_id: str, firestore_key_file: str) -> str:
-    db = firestore.Client.from_service_account_json(firestore_key_file) # type: ignore
-    doc = db.collection("sessions").document(session_id).get()
+def read_session_doc_from_firestore(session_id: str, firestore_db: firestore.Client) -> str:
+    doc = cast(firestore.DocumentSnapshot, firestore_db.collection("sessions").document(session_id).get())
     if doc.exists:
-        return str(doc.to_dict()['session'])
+        doc_dict = doc.to_dict()
+        assert doc_dict
+        return str(doc_dict['session'])
     else:
         raise Exception("Gradescope auth session ID not found")
 
@@ -177,7 +178,7 @@ bookmarklet_code = r"""
             return response;
         };
 
-        window.location.href = "http://localhost:8501/?auth_token=" + encodeURIComponent(authToken) 
+        window.location.href = "http://localhost:8501/?auth_token=" + encodeURIComponent(authToken)
                         + "&name=" + encodeURIComponent(user.name || "")
                         + "&email=" + encodeURIComponent(user.email || "") + cookieString;;
     })();
