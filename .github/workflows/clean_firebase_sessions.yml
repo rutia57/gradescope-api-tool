@@ -1,0 +1,38 @@
+name: Cleanup expired Firebase sessions
+
+on:
+  schedule:
+    - cron: "0 0 * * 0" # every 7 days
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install google-cloud-firestore
+
+      - name: Create Firebase credentials file
+        run: |
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}' > firebase-key.json
+
+      - name: Run cleanup
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: firebase-key.json
+        run: |
+          python cleanup_sessions.py
+
+      - name: Delete credentials
+        if: always()
+        run: |
+          rm -f firebase-key.json

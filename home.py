@@ -153,8 +153,12 @@ with container:
         st.session_state.button_click_counts[st.session_state['state_hash']][button_name] += 1
 
     if st.session_state.session_from_ext:
-        st.session_state.gs_conn, user = login_with_cookies(st.session_state.session_info)
-        st.success(f"✅ Successfully logged in to Gradescope as {user['name']} ({user['email']})")
+        try:
+            st.session_state.gs_conn, user = login_with_cookies(st.session_state.session_info)
+            st.success(f"✅ Successfully logged in to Gradescope as {user['name']} ({user['email']})")
+        except Exception as e: 
+            st.error('There was an error logging in to Gradescope. Your session has likely expired; try opening Gradescope '
+            'and clicking the extension icon again to create a new session.')
 
     # Course tools
     if st.session_state.gs_conn is not None:
