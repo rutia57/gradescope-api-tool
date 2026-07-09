@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Gradescope API Tool",
-  "version": "1.0",
+  "version": "2.0",
 
   "permissions": [
     "cookies",
