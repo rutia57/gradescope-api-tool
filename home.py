@@ -66,11 +66,9 @@ else:
         else:
             firestore_collection_name_key = "gradescope-api-streamlit-counts-prod"
 
-_original_st_error = st.error
-def logged_st_error(message, *args, **kwargs): # type: ignore[no-untyped-def]
-    log_error(firestore_key_file=key_file, error=message, context="st.error", state_hash=st.session_state.get("state_hash", ""))
-    return _original_st_error(message, *args, **kwargs)
-st.error = logged_st_error  # type: ignore[assignment]
+def show_error(message: str, *, context: str | None = None) -> None:
+    log_error(firestore_key_file=key_file, error=message, context=context or "st.error")
+    st.error(message)
 
 with error_logged_section(key_file, "Show installation instructions"):
     if st.session_state.session_from_ext is None:
@@ -175,7 +173,7 @@ with container:
             st.session_state.gs_conn, user = login_with_cookies(st.session_state.session_info)
             st.success(f"✅ Successfully logged in to Gradescope as {user['name']} ({user['email']})")
         except Exception as e: 
-            st.error('There was an error logging in to Gradescope. Your session has likely expired; try opening Gradescope '
+            show_error('There was an error logging in to Gradescope. Your session has likely expired; try opening Gradescope '
             'and clicking the extension icon again to create a new session.')
 
     # Course tools
