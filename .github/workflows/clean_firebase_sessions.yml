@@ -30,7 +30,7 @@ jobs:
         env:
           GOOGLE_APPLICATION_CREDENTIALS: firebase-key.json
         run: |
-          python cleanup_sessions.py
+          python .github/scripts/clean_firebase_sessions.py
 
       - name: Delete credentials
         if: always()
