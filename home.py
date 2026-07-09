@@ -97,12 +97,16 @@ else:
 with container:
 
     if st.session_state.session_from_ext:
-        session_from_ext_id = st.query_params.get("session_from_ext_id")
-        if session_from_ext_id is not None:
-            session = read_session_doc_from_firestore(session_id=session_from_ext_id, firestore_key_file=key_file)
-            st.session_state['session_info'] = json.loads(base64.b64decode(session).decode("utf-8"))
-        else:
-            st.session_state['session_info'] = json.loads(base64.b64decode(st.session_state.session_from_ext).decode("utf-8"))
+        try:
+            session_from_ext_id = st.query_params.get("session_from_ext_id")
+            if session_from_ext_id is not None:
+                session = read_session_doc_from_firestore(session_id=session_from_ext_id, firestore_key_file=key_file)
+                st.session_state['session_info'] = json.loads(base64.b64decode(session).decode("utf-8"))
+            else:
+                st.session_state['session_info'] = json.loads(base64.b64decode(st.session_state.session_from_ext).decode("utf-8"))
+        except Exception as e: 
+            st.error('There was an error logging in to Gradescope. Your session has likely expired; try opening Gradescope '
+            'and clicking the extension icon again to create a new session.')
 
     default_course_option = '<select a course>'
     default_assignment_option = '<select an assignment>'
