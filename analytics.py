@@ -1,5 +1,8 @@
 import datetime
-from typing import Any
+import traceback
+import uuid
+from contextlib import contextmanager
+from typing import Any, Generator
 
 import streamlit as st
 from google.cloud import firestore
@@ -47,3 +50,27 @@ def log_stats(firestore_key_file: str, firestore_collection_name: str) -> None:
         firestore_key_file,
         firestore_collection_name,
     )
+
+
+def log_error(firestore_key_file: str, error: Exception | str, context: str | None = None, state_hash: str | None = None) -> None:
+    error_db = firestore.Client.from_service_account_json(firestore_key_file) # type: ignore
+    try:
+        error_db.collection("prod-errors").document(str(uuid.uuid4())).set({
+            "timestamp": datetime.datetime.now(datetime.timezone.utc),
+            "error": str(error),
+            "traceback": traceback.format_exc(),
+            "context": context,
+            "state_hash": state_hash,
+        })
+    except Exception:
+        # Never let logging break the app
+        pass
+
+
+@contextmanager
+def error_logged_section(firestore_key_file: str, name: str) -> Generator[None, None, None]:
+    try:
+        yield
+    except Exception as e:
+        log_error(firestore_key_file=firestore_key_file, error=e, context=name, state_hash=st.session_state.get("state_hash", ""))
+        st.error(f"{name} failed: {e}")
