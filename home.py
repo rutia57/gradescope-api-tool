@@ -74,9 +74,6 @@ def show_error(message: str, *, context: str | None = None) -> None:
     log_error(firestore_db=st.session_state.firestore_db, error=message, context=context or "st.error")
     st.error(message)
 
-st.json(st.session_state.get('logged_errors_firestore'))
-st.write(st.session_state.get('logging_runs',""))
-
 with error_logged_section(firestore_db=st.session_state.firestore_db, name="Show installation instructions"):
     if st.session_state.session_from_ext is None:
         with st.expander('Installation instructions', expanded=True):
