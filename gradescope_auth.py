@@ -12,6 +12,7 @@ from typing import Any
 import json5
 import requests
 from bs4 import BeautifulSoup
+from google.cloud import firestore
 from gradescopeapi.api.constants import BASE_URL
 from gradescopeapi.classes.account import Account
 from playwright.sync_api import sync_playwright, BrowserContext
@@ -131,6 +132,15 @@ def create_new_user() -> str:
     profile_dir.mkdir(parents=True, exist_ok=True)
     register_token(token)
     return token
+
+def read_session_doc_from_firestore(session_id: str, firestore_key_file: str) -> str:
+    db = firestore.Client.from_service_account_json(firestore_key_file) # type: ignore
+    doc = db.collection("sessions").document(session_id).get()
+    if doc.exists:
+        return str(doc.to_dict()['session'])
+    else:
+        raise Exception("Gradescope auth session ID not found")
+
 
 bookmarklet_code = r"""
     javascript:(function(){

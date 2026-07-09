@@ -15,6 +15,7 @@ import streamlit as st
 from gradescope_auth import (
     SAMPLE_PLACEHOLDER_GS_CONN,
     login_with_cookies,
+    read_session_doc_from_firestore,
 )
 from st_aggrid import AgGrid  # type: ignore[import-untyped]
 from utils import (
@@ -81,10 +82,27 @@ if st.session_state.session_from_ext:
 else: 
     container = st.expander('View sample grade reports')
 
+if os.path.exists("firebase-key.json"):
+    key_file = "firebase-key.json"
+    firestore_collection_name_key = "gradescope-api-streamlit-counts-local"
+else:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        json.dump(dict(st.secrets["firebase"]), f)
+        key_file = f.name
+        if st.query_params.get("automatic_ping") is not None:
+            firestore_collection_name_key = "gradescope-api-streamlit-counts-auto"
+        else:
+            firestore_collection_name_key = "gradescope-api-streamlit-counts-prod"
+
 with container:
 
     if st.session_state.session_from_ext:
-        st.session_state['session_info'] = json.loads(base64.b64decode(st.session_state.session_from_ext).decode("utf-8"))
+        session_from_ext_id = st.query_params.get("session_from_ext_id")
+        if session_from_ext_id is not None:
+            session = read_session_doc_from_firestore(session_id=session_from_ext_id, firestore_key_file=key_file)
+            st.session_state['session_info'] = json.loads(base64.b64decode(session).decode("utf-8"))
+        else:
+            st.session_state['session_info'] = json.loads(base64.b64decode(st.session_state.session_from_ext).decode("utf-8"))
 
     default_course_option = '<select a course>'
     default_assignment_option = '<select an assignment>'
@@ -133,18 +151,6 @@ with container:
 
     def increment_button_count(button_name: str) -> None: 
         st.session_state.button_click_counts[st.session_state['state_hash']][button_name] += 1
-
-    if os.path.exists("firebase-key.json"):
-        key_file = "firebase-key.json"
-        firestore_collection_name_key = "gradescope-api-streamlit-counts-local"
-    else:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            json.dump(dict(st.secrets["firebase"]), f)
-            key_file = f.name
-            if st.query_params.get("automatic_ping") is not None:
-                firestore_collection_name_key = "gradescope-api-streamlit-counts-auto"
-            else:
-                firestore_collection_name_key = "gradescope-api-streamlit-counts-prod"
 
     if st.session_state.session_from_ext:
         st.session_state.gs_conn, user = login_with_cookies(st.session_state.session_info)

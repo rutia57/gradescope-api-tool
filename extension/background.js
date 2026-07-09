@@ -1,3 +1,18 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDkq0WkE4-n2TIv5yj_QXsUXFlV7IhAze8",
+  authDomain: "streamlit-app-tracking.firebaseapp.com",
+  projectId: "streamlit-app-tracking",
+  storageBucket: "streamlit-app-tracking.firebasestorage.app",
+  messagingSenderId: "924961359770",
+  appId: "1:924961359770:web:b58ed52b7f23aafd025c23",
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
 chrome.action.onClicked.addListener(async (tab) => {
     const url = tab?.url || "";
     const isGradescope = url.startsWith("https://www.gradescope.com/");
@@ -22,6 +37,12 @@ chrome.action.onClicked.addListener(async (tab) => {
     });
 });
 
+function randomId(length = 8) {
+    const chars =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    const bytes = crypto.getRandomValues(new Uint8Array(length));
+    return Array.from(bytes, b => chars[b % chars.length]).join("");
+}
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     // -------------------------
@@ -48,7 +69,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.type === "launch") {
         chrome.cookies.getAll({
             domain: "www.gradescope.com"
-        }, (cookies) => {
+        }, async (cookies) => {
             const data = {
                 name: msg.name,
                 email: msg.email,
@@ -58,9 +79,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             let binary = "";
             for (const b of bytes) binary += String.fromCharCode(b);
             const session = btoa(binary);
+
+            const id = randomId();
+
+            await setDoc(doc(db, "sessions", id), {
+                session,
+                created: new Date(),
+                expires: new Date(Date.now() + 24 * 60 * 60 * 1000) //24 hours
+            });
+
             chrome.tabs.create({
-                url: "https://gradescope-api-tool.streamlit.app/?session_from_ext=" +
-                     encodeURIComponent(session)
+                url: "https://gradescope-api-tool.streamlit.app/?session_from_ext=b&session_from_ext_id=" + id
+                    //  encodeURIComponent(session)
             });
         });
     }
