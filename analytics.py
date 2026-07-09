@@ -54,11 +54,11 @@ def log_stats(firestore_db: firestore.Client, firestore_collection_name: str) ->
 def log_error(firestore_db: firestore.Client, error: Exception | str, context: str | None = None, state_hash: str | None = None) -> None:
     try:
         key = f"{context}:{error}:{traceback.format_exc()}"
-        if key in st.session_state.get("logged_errors", set()):
+        if key in st.session_state.get("logged_errors_firestore", set()):
             return
-        if "logged_errors" not in st.session_state:
-            st.session_state.logged_errors = set()
-        st.session_state.logged_errors.add(key)
+        if "logged_errors_firestore" not in st.session_state:
+            st.session_state.logged_errors_firestore = set()
+        st.session_state.logged_errors_firestore.add(key)
 
         firestore_db.collection("prod-errors").document(str(uuid.uuid4())).set({
             "timestamp": datetime.datetime.now(datetime.timezone.utc),
