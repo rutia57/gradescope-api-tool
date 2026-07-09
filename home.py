@@ -141,7 +141,10 @@ with container:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(dict(st.secrets["firebase"]), f)
             key_file = f.name
-            firestore_collection_name_key = "gradescope-api-streamlit-counts-prod"
+            if st.query_params.get("automatic_ping") is not None:
+                firestore_collection_name_key = "gradescope-api-streamlit-counts-auto"
+            else:
+                firestore_collection_name_key = "gradescope-api-streamlit-counts-prod"
 
     if st.session_state.session_from_ext:
         st.session_state.gs_conn, user = login_with_cookies(st.session_state.session_info)

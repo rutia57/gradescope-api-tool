@@ -1,6 +1,6 @@
 from playwright.sync_api import sync_playwright
 
-URL = "https://gradescope-api-tool.streamlit.app/" 
+URL = "https://gradescope-api-tool.streamlit.app/?automatic_ping=1"
 EXPECTED_TEXT = "welcome to the gradescope api tool" 
 
 with sync_playwright() as p: 
