@@ -68,7 +68,7 @@ else:
             firestore_collection_name_key = "gradescope-api-streamlit-counts-prod"
 
 if 'firestore_db' not in st.session_state:
-    st.session_state.firestore_db = firestore.Client.from_service_account_json(firestore_key_file) # type: ignore
+    st.session_state.firestore_db = firestore.Client.from_service_account_json(key_file) # type: ignore
 
 def show_error(message: str, *, context: str | None = None) -> None:
     log_error(firestore_db=st.session_state.firestore_db, error=message, context=context or "st.error")
