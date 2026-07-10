@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import datetime
-import hashlib
 import html
 import io
 import json
-import os
 import pickle
 import re
 import time
@@ -19,7 +17,7 @@ from functools import reduce, wraps
 from numbers import Number
 from pathlib import Path
 from statistics import mean, median
-from typing import cast, Any, Callable, Literal, ParamSpec, TypeVar
+from typing import Any, Callable, Literal, TypeVar
 
 import numpy as np
 import pandas as pd
@@ -28,14 +26,11 @@ import requests
 import streamlit as st
 from bs4 import BeautifulSoup, Tag
 from cachetools import TTLCache, cached
-from diskcache import Cache  # type: ignore[import-untyped]
 from gradescopeapi.classes.member import Member
 from gradescopeapi.classes.assignments import Assignment
 from gradescope_auth import SAMPLE_PLACEHOLDER_GS_CONN, GSConnectionFromSession as Conn
 from st_aggrid import GridOptionsBuilder, JsCode  # type: ignore[import-untyped]
 
-os.makedirs("/data/cache", exist_ok=True)
-cache = Cache("/data/cache")
 
 BULLETS = ['•', '◦', '▪']
 
@@ -121,30 +116,6 @@ def sample_report_available(func: F) -> F:
             return pickle.load(f)
     return wrapper # type: ignore
 
-P = ParamSpec("P")
-R = TypeVar("R")
-
-def disk_cache(ttl: float | None = None) -> Callable[[Callable[P, R]], Callable[P, R]]:
-    def decorator(func: Callable[P, R]) -> Callable[P, R]:
-        @wraps(func)
-        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-            key = (
-                func.__module__,
-                func.__qualname__,
-                hashlib.sha256(
-                    pickle.dumps((args, kwargs), protocol=pickle.HIGHEST_PROTOCOL)
-                ).hexdigest(),
-            )
-            if key in cache:
-                return cast(R, cache[key])
-            result = func(*args, **kwargs)
-            cache.set(key, result, expire=ttl)
-            return result
-        wrapper.clear = lambda: cache.clear()  # type: ignore[attr-defined]
-        return wrapper
-    return decorator
-
-
 @dataclass
 class PlaceholderAssignment:
     assignment_id: str | None
@@ -195,7 +166,7 @@ def format_assignment_names(assignments_list: list[Assignment]) -> dict[str, str
 def get_user_mapping(users: list[Student]) -> dict[str, Student]:
     return {u.identifier: u for u in users}
 
-@disk_cache(ttl=3600)
+# @st.cache_data(ttl=3600)
 def filter_submission_zip(zip_bytes: bytes, submission_id_to_student_name_mapping: dict[str, str], assignment_name: str, zip_file_name: str, submission_ids: set[str] | None=None) -> bytes:
     input_zip = io.BytesIO(zip_bytes)
     output_zip = io.BytesIO()
@@ -246,7 +217,7 @@ def format_name(s: Student | Member) -> tuple[str, str]:
             return f'{" ".join(name_parts[0:-1])}', f'{name_parts[-1]}'
 
 ############################# Get submission files from Gradescope #############################
-@disk_cache(ttl=3600)
+# @st.cache_data(ttl=3600, hash_funcs={Question: lambda q: (q.course_id, q.assignment_id, q.question_id)})
 def get_submission_original_pdf_bytes(_conn: Conn, course_id: str, assignment_id: str, submission_id: str) -> bytes | None:
     resp = query_endpoint(Endpoint.SUBMISSION, _conn, course_id=course_id, assignment_id=assignment_id, submission_id=submission_id)
     resp_json = resp.json()
@@ -256,7 +227,7 @@ def get_submission_original_pdf_bytes(_conn: Conn, course_id: str, assignment_id
         return pdf_resp.content
     return None
 
-@disk_cache(ttl=3600)
+# @st.cache_data(ttl=3600)
 def get_original_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_id: str, assignment_name: str, submission_ids_and_student_names: list[tuple[str, str]]) -> tuple[bytes, set[str]]:
     if _conn == SAMPLE_PLACEHOLDER_GS_CONN:
         output_zip = io.BytesIO()
@@ -285,7 +256,7 @@ def get_original_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_i
     return output_zip.getvalue(), successfully_downloaded
 
 @sample_report_available
-@cached(cache=TTLCache(maxsize=100, ttl=3600), key=ignore_some_args)
+# @cached(cache=TTLCache(maxsize=100, ttl=3600), key=ignore_some_args)
 def get_graded_submission_zip_bytes_helper(_conn: Conn, course_id: str, assignment_id: str, progress_callback: Callable[[float], Any] | None=None) -> bytes:
     review_grades_url = Endpoint.REVIEW_GRADES.format(base_url=_conn.account.gradescope_base_url, course_id=course_id, assignment_id=assignment_id)
     review_grades_resp = query_endpoint(Endpoint.REVIEW_GRADES, _conn, course_id=course_id, assignment_id=assignment_id)
