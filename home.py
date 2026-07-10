@@ -1,3 +1,12 @@
+import tracemalloc
+tracemalloc.start()
+
+def snap_and_print(label: str) -> None:
+    snap_after = tracemalloc.take_snapshot()
+    for stat in snap_after.statistics("lineno")[:1]:
+        print(f"{label}: {stat.size / (1024*1024) :.2f} MB", stat.traceback)
+    print()
+
 import base64
 import datetime
 import io
@@ -16,6 +25,7 @@ from analytics import (
     log_stats,
     error_logged_section,
 )
+from cache import save_memory_usage, send_email_with_attachment, save_tracemalloc_file
 import streamlit as st
 from gradescope_auth import (
     SAMPLE_PLACEHOLDER_GS_CONN,
@@ -54,7 +64,6 @@ st.set_page_config(page_title="Gradescope API Tool", page_icon="extension/icon.p
 st.set_page_config(layout='wide')
 st.markdown("# 🎓 Gradescope API Tool")
 st.session_state['session_from_ext'] = st.query_params.get("session_from_ext")
-st.cache_data.clear()
 
 if os.path.exists("firebase-key.json"):
     key_file = "firebase-key.json"
@@ -67,6 +76,13 @@ else:
             firestore_collection_name_key = "gradescope-api-streamlit-counts-auto"
         else:
             firestore_collection_name_key = "gradescope-api-streamlit-counts-prod"
+
+if os.path.exists("gmail-keys.json"):
+    gmail_key_file = "gmail-keys.json"
+else:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        json.dump(dict(st.secrets["gmail"]), f)
+        gmail_key_file = f.name
 
 if 'firestore_db' not in st.session_state:
     st.session_state.firestore_db = firestore.Client.from_service_account_json(key_file) # type: ignore
@@ -133,6 +149,7 @@ with container:
                 st.session_state[var] = None
         if st.session_state.session_from_ext:
             if 'selected_course_name' not in st.session_state:
+                st.cache_data.clear()
                 st.session_state['selected_course_name'] = default_course_option
             if 'selected_assignment_name' not in st.session_state:
                 st.session_state['selected_assignment_name'] = default_assignment_option
@@ -170,7 +187,8 @@ with container:
                 f'{st.session_state.selected_course_name}_'
             )
 
-        def increment_button_count(button_name: str) -> None:
+        def increment_button_count(button_name: str, len_content: int | None = None) -> None:
+            print(f'Downloading {((len_content or -1)/(1024*1024)):.4f}MB from button {button_name}')
             st.session_state.button_click_counts[st.session_state['state_hash']][button_name] += 1
 
     if st.session_state.session_from_ext:
@@ -217,7 +235,7 @@ with container:
 
             # Load assignment data
             if st.session_state.selected_assignment_id is not None or st.session_state.session_from_ext is None:
-                with st.spinner('Loading assignment data... (for larger courses, this may take a couple of minutes)', show_time=True):
+                with st.spinner('Loading assignment data... (for larger courses/assignments, this may take a couple of minutes)', show_time=True):
                     if st.session_state.selected_assignment_id == '<nan>':
                         st.warning('No grade data available for this assignment.')
                     else:
@@ -227,20 +245,30 @@ with container:
                             assignment_id = st.session_state.selected_assignment_id
                             course_id = st.session_state.selected_course_id
 
-                            with st.spinner('Loading assignment & grade data from Gradescope...', show_time=True):
+                            with st.spinner('Loading student_info...'):
                                 students, max_student_name_length = get_student_info(conn, course_id)
+                            with st.spinner('Loading instructor_info...'):
                                 instructors = get_instructor_info(conn, course_id)
+                            with st.spinner('Loading user_mapping...'):
                                 student_mapping = get_user_mapping(students)
                                 instructor_mapping = get_user_mapping(instructors)
                                 users = students + instructors
                                 user_mapping = student_mapping | instructor_mapping
+                            with st.spinner('Loading assignment_questions...'):
                                 questions, questions_order = get_assignment_questions(conn, course_id, assignment_id)
+                            with st.spinner('Loading raw_submissions_metadata...'):
                                 raw_submissions_metadata = get_raw_submissions_metadata(conn, course_id, assignment_id)
+                            with st.spinner('Loading grades_metadata...'):
                                 grades_metadata = get_grades_metadata(conn, course_id, assignment_id, instructors, users)
+                            with st.spinner('Loading student_to_assignment_submissions...'):
                                 student_to_assignment_submissions = get_student_to_assignment_submissions(users, raw_submissions_metadata, grades_metadata)
+                            with st.spinner('Loading grader_by_question_submission...'):
                                 grader_by_question_submission = get_grader_by_question_submission(conn, course_id, questions)
+                            with st.spinner('Loading question_to_question_submissinos...'):
                                 question_to_submissions = get_question_to_question_submissions(conn, course_id, questions)
+                            with st.spinner('Loading raw_data_by_question_submission...'):
                                 comments, total_scores, student_to_question_to_question_submission = get_raw_data_by_question_submission(conn, course_id, users, questions, question_to_submissions, student_to_assignment_submissions)
+                            with st.spinner('Loading grade_breakdowns...'):
                                 grade_breakdowns = get_grade_breakdowns(users, questions, comments, total_scores, student_to_question_to_question_submission, grader_by_question_submission, questions_order)
                                 users_with_grades = [u for u in users if grades_metadata[u.email_address]['submitted']]
 
@@ -298,7 +326,7 @@ with container:
                                     '**Download grade summary (.csv file)**',
                                     data=grade_summary.to_csv(index=False).encode("utf-8"),
                                     file_name=f'{assignment.name.replace(" ","")}_grades_summary_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.csv',
-                                    on_click=lambda: increment_button_count('download_grade_summary_report'),
+                                    on_click=lambda: increment_button_count('download_grade_summary_report', len(grade_summary.to_csv(index=False).encode("utf-8"))),
                                 )
 
                             with error_logged_section(firestore_db=st.session_state.firestore_db, name="Show grade feedback files section"):
@@ -349,7 +377,7 @@ with container:
                                     f'**Download grade feedback for selected students ({len(st.session_state.selected_students_grades)}) (.zip containing .txt files)**',
                                     grade_feedback_files_zip_file_bytes,
                                     file_name=f'{assignment.name.replace(" ","")}_grade_feedback_files_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
-                                    on_click=lambda: increment_button_count('download_grade_feedback_files')
+                                    on_click=lambda: increment_button_count('download_grade_feedback_files', len(grade_feedback_files_zip_file_bytes))
                                 )
 
                             with error_logged_section(firestore_db=st.session_state.firestore_db, name="Show submission downloads section"):
@@ -366,9 +394,9 @@ with container:
                                 grades_download_button_slot = st.empty()
                                 grades_download_button_slot.download_button(
                                     f'**Download graded submissions with feedback for selected students ({len(st.session_state.selected_students_submissions)}) (.zip containing .pdf files)**',
-                                    '',
+                                    b'',
                                     file_name=f'{assignment.name.replace(" ","")}_graded_submissions_with_comments_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
-                                    on_click=lambda: increment_button_count('download_graded_submissions'),
+                                    on_click=lambda: increment_button_count('download_graded_submissions', len(b'')),
                                     disabled=True,
                                     key=str(uuid.uuid4()),
                                 )
@@ -381,9 +409,9 @@ with container:
                                             grades_download_button_slot.empty()
                                             grades_download_button_slot.download_button(
                                                 f'**Download graded submissions with feedback for selected students ({len(st.session_state.selected_students_submissions)}) (.zip containing .pdf files)**',
-                                                '',
+                                                b'',
                                                 file_name=f'{assignment.name.replace(" ","")}_graded_submissions_with_comments_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
-                                                on_click=lambda: increment_button_count('download_graded_submissions'),
+                                                on_click=lambda: increment_button_count('download_graded_submissions', len(b'')),
                                                 disabled=True,
                                                 key=str(uuid.uuid4()),
                                             )
@@ -395,7 +423,7 @@ with container:
                                                 f'**Download graded submissions with feedback for selected students ({len(st.session_state.selected_students_submissions)}) (.zip containing .pdf files)**',
                                                 graded_submissions_bytes,
                                                 file_name=f'{assignment.name.replace(" ","")}_graded_submissions_with_comments_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
-                                                on_click=lambda: increment_button_count('download_graded_submissions'),
+                                                on_click=lambda: increment_button_count('download_graded_submissions', len(graded_submissions_bytes)),
                                                 disabled=False,
                                                 key=str(uuid.uuid4()),
                                             )
@@ -411,7 +439,7 @@ with container:
                                     '**Download assignment outline and question stats (.csv file)**',
                                     assignment_outline_and_stats_df.to_csv(index=False),
                                     file_name=f'{assignment.name.replace(" ","")}_assignment_outline_and_question_stats_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.csv',
-                                    on_click=lambda: increment_button_count('download_assignment_outline'),
+                                    on_click=lambda: increment_button_count('download_assignment_outline', len(assignment_outline_and_stats_df.to_csv(index=False))),
                                 )
 
                             with error_logged_section(firestore_db=st.session_state.firestore_db, name="Gradesd submissions export & download"):
@@ -456,12 +484,28 @@ with container:
                                         f'**Download original submissions for selected students ({len(successfully_downloaded_original_submission)}) (.zip containing .pdf files)**',
                                         original_submissions_bytes,
                                         file_name=f'{assignment.name.replace(" ","")}_original_submissions_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
-                                        on_click=lambda: increment_button_count('download_original_submissions'),
+                                        on_click=lambda: increment_button_count('download_original_submissions', len(original_submissions_bytes)),
                                     )
 
                         except NotImplementedError as e:
                             show_error(str(e))
 
+    mem_button = st.button('save memory usage report info')
+    if mem_button:
+        import sys
+        objs = [(name, obj, sys.getsizeof(obj)/1024/1024) for (name,obj) in globals().items()]
+        os.makedirs('tmp/data',exist_ok=True)
+        with open('tmp/data/printed_output.txt', 'a') as file:
+            for name, obj, size in sorted(objs, key=lambda x: x[2], reverse=True):
+                try:
+                    file.write(f"{name}, {type(obj).__name__}, {size:.4f} MB")
+                except:
+                    pass
+        snapshot = tracemalloc.take_snapshot()
+        tracemalloc_name = save_tracemalloc_file(snapshot)
+        save_memory_usage(limit=50)
+        send_email_with_attachment(tracemalloc_name,'tracemalloc report', '', gmail_key_file)
+        send_email_with_attachment('tmp/data/memory_report.tsv','memory report', '', gmail_key_file)
 
     try:
         log_stats(firestore_db=st.session_state.firestore_db, firestore_collection_name=firestore_collection_name_key)

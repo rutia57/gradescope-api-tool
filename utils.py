@@ -170,7 +170,7 @@ def get_user_mapping(users: list[Student]) -> dict[str, Student]:
 def filter_submission_zip(zip_bytes: bytes, submission_id_to_student_name_mapping: dict[str, str], assignment_name: str, zip_file_name: str, submission_ids: set[str] | None=None) -> bytes:
     input_zip = io.BytesIO(zip_bytes)
     output_zip = io.BytesIO()
-    if submission_ids and len(submission_ids) == (len(zipfile.ZipFile(input_zip, "r").infolist())-1):
+    if submission_ids and len(submission_ids) == (len(zipfile.ZipFile(input_zip, "r").infolist())-2):
         return zip_bytes
     try:
         with zipfile.ZipFile(input_zip, "r") as zin:
@@ -217,7 +217,7 @@ def format_name(s: Student | Member) -> tuple[str, str]:
             return f'{" ".join(name_parts[0:-1])}', f'{name_parts[-1]}'
 
 ############################# Get submission files from Gradescope #############################
-# @disk_cache_data(ttl=3600, hash_funcs={Question: lambda q: (q.course_id, q.assignment_id, q.question_id)})
+@disk_cache_data(ttl=3600, hash_funcs={Question: lambda q: (q.course_id, q.assignment_id, q.question_id)})
 def get_submission_original_pdf_bytes(_conn: Conn, course_id: str, assignment_id: str, submission_id: str) -> bytes | None:
     resp = query_endpoint(Endpoint.SUBMISSION, _conn, course_id=course_id, assignment_id=assignment_id, submission_id=submission_id)
     resp_json = resp.json()
@@ -227,7 +227,7 @@ def get_submission_original_pdf_bytes(_conn: Conn, course_id: str, assignment_id
         return pdf_resp.content
     return None
 
-# @disk_cache_data(ttl=3600)
+@disk_cache_data(ttl=3600)
 def get_original_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_id: str, assignment_name: str, submission_ids_and_student_names: list[tuple[str, str]]) -> tuple[bytes, set[str]]:
     if _conn == SAMPLE_PLACEHOLDER_GS_CONN:
         output_zip = io.BytesIO()
@@ -256,7 +256,7 @@ def get_original_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_i
     return output_zip.getvalue(), successfully_downloaded
 
 @sample_report_available
-@disk_cache_data(ttl=3600, ignore_args={"_conn", "progress_callback"})
+@disk_cache_data(ttl=3600, ignore_args={"progress_callback"})
 def get_graded_submission_zip_bytes_helper(_conn: Conn, course_id: str, assignment_id: str, progress_callback: Callable[[float], Any] | None=None) -> bytes:
     review_grades_url = Endpoint.REVIEW_GRADES.format(base_url=_conn.account.gradescope_base_url, course_id=course_id, assignment_id=assignment_id)
     review_grades_resp = query_endpoint(Endpoint.REVIEW_GRADES, _conn, course_id=course_id, assignment_id=assignment_id)

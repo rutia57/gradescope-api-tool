@@ -3,7 +3,10 @@ __pycache__/
 .venv/
 .vscode/
 .DS_Store
+.streamlit/secrets.toml
 gradescope_profiles/
 data/
-disk-cache/
+disk_cache/
+tmp/
 firebase-key.json
+gmail-keys.json
