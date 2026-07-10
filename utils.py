@@ -257,7 +257,7 @@ def get_original_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_i
 
 @sample_report_available
 @cached(cache=TTLCache(maxsize=100, ttl=3600), key=ignore_some_args)
-def get_graded_submission_zip_bytes_helper(_conn: Conn, course_id: str, assignment_id: str, progress_callback: Callable[[float], Any] | None=None) -> bytes:
+def get_graded_submission_zip_bytes_helper(_conn: Conn, course_id: str, assignment_id: str, progress_callback: Callable[[float], Any] | None=None) -> str | bytes:
     review_grades_url = Endpoint.REVIEW_GRADES.format(base_url=_conn.account.gradescope_base_url, course_id=course_id, assignment_id=assignment_id)
     review_grades_resp = query_endpoint(Endpoint.REVIEW_GRADES, _conn, course_id=course_id, assignment_id=assignment_id)
     soup = BeautifulSoup(review_grades_resp.text, "html.parser").find("meta", {"name": "csrf-token"})
@@ -279,18 +279,20 @@ def get_graded_submission_zip_bytes_helper(_conn: Conn, course_id: str, assignme
             break
         time.sleep(1)
     # download full .zip with all students
-    for _ in range(10):
-        try:
-            resp3 = query_endpoint(Endpoint.ZIP_FILE, _conn, course_id=course_id, assignment_id=assignment_id)
-            zipfile.ZipFile(io.BytesIO(resp3.content), "r")
-            return resp3.content
-        except Exception:
-            time.sleep(1)
-    return b''
+    # for _ in range(10):
+    #     try:
+    #         resp3 = query_endpoint(Endpoint.ZIP_FILE, _conn, course_id=course_id, assignment_id=assignment_id)
+    #         zipfile.ZipFile(io.BytesIO(resp3.content), "r")
+    #         return resp3.content
+    #     except Exception:
+    #         time.sleep(1)
+    # return b''
+    return Endpoint.ZIP_FILE.value.format(base_url=_conn.account.gradescope_base_url, course_id=course_id, assignment_id=assignment_id)
 
-def get_graded_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_id: str, submission_id_to_student_name_mapping: dict[str, str], assignment_name: str, zip_file_name: str, submission_ids: set[str] | None =None, _progress_callback: Callable[[float], Any] | None =None) -> bytes:
-    zip_bytes = get_graded_submission_zip_bytes_helper(_conn, course_id, assignment_id, _progress_callback)
-    return filter_submission_zip(zip_bytes, submission_id_to_student_name_mapping, assignment_name, zip_file_name, submission_ids)
+def get_graded_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_id: str, submission_id_to_student_name_mapping: dict[str, str], assignment_name: str, zip_file_name: str, submission_ids: set[str] | None =None, _progress_callback: Callable[[float], Any] | None =None) -> str | bytes:
+    # zip_bytes = get_graded_submission_zip_bytes_helper(_conn, course_id, assignment_id, _progress_callback)
+    # return filter_submission_zip(zip_bytes, submission_id_to_student_name_mapping, assignment_name, zip_file_name, submission_ids)
+    return get_graded_submission_zip_bytes_helper(_conn, course_id, assignment_id, _progress_callback)
 
 ############################### Extract raw data from Gradescope ################################
 @sample_report_available
