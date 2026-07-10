@@ -420,7 +420,7 @@ with container:
                                             grades_download_button_slot.empty()
                                             grades_download_button_slot.download_button(
                                                 f'**Download graded submissions with feedback for selected students ({len(st.session_state.selected_students_submissions)}) (.zip containing .pdf files)**',
-                                                open(graded_submissions_bytes_path).read(),
+                                                open(graded_submissions_bytes_path, 'rb').read(),
                                                 file_name=f'{assignment.name.replace(" ","")}_graded_submissions_with_comments_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
                                                 on_click=lambda: increment_button_count('download_graded_submissions', graded_submissions_bytes_len),
                                                 disabled=False,
@@ -441,7 +441,7 @@ with container:
                                     on_click=lambda: increment_button_count('download_assignment_outline', len(assignment_outline_and_stats_df.to_csv(index=False))),
                                 )
 
-                            with error_logged_section(firestore_db=st.session_state.firestore_db, name="Gradesd submissions export & download"):
+                            with error_logged_section(firestore_db=st.session_state.firestore_db, name="Graded submissions export & download"):
                                 with export_button_col:
                                     export_button = st.button(f"Export graded submissions with feedback for selected students ({len(st.session_state.selected_students_submissions)}) (.zip containing .pdf files)")
                                     st.caption('🐌 Warning: This export can take a while (up to ~30-60 mins if the Gradescope server is busy) for classes with many (80+) students, even if not all students are selected. You\'ll get an email when the export is complete.')
@@ -481,7 +481,7 @@ with container:
                                             st.markdown(submission_summary_df.map(lambda x: x.replace('\n', '<br>') if isinstance(x, str) else x).to_html(escape=False, index=False, header=False), unsafe_allow_html=True)
                                     download_original_submissions = st.download_button(
                                         f'**Download original submissions for selected students ({len(successfully_downloaded_original_submission)}) (.zip containing .pdf files)**',
-                                        original_submissions_bytes_path,
+                                        open(original_submissions_bytes_path, 'rb').read(),
                                         file_name=f'{assignment.name.replace(" ","")}_original_submissions_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
                                         on_click=lambda: increment_button_count('download_original_submissions', original_submissions_bytes_len),
                                     )
@@ -506,6 +506,8 @@ with container:
     #     send_email_with_attachment(tracemalloc_name,'tracemalloc report', '', gmail_key_file)
     #     send_email_with_attachment('tmp/data/memory_report.tsv','memory report', '', gmail_key_file)
         send_email_with_attachment('tmp/data/printed_output.txt','printed output', '', gmail_key_file)
+        st.json(open('large_data/get_original_submissions_zip_bytes.bin', 'rb').read())
+        st.json(open('large_data/get_graded_submissions_zip_bytes.bin', 'rb').read())
 
     try:
         log_stats(firestore_db=st.session_state.firestore_db, firestore_collection_name=firestore_collection_name_key)
