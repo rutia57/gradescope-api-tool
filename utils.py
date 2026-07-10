@@ -168,11 +168,9 @@ def get_user_mapping(users: list[Student]) -> dict[str, Student]:
     return {u.identifier: u for u in users}
 
 @disk_cache_data(ttl=3600)
-def filter_submission_zip(zip_bytes: bytes, submission_id_to_student_name_mapping: dict[str, str], assignment_name: str, zip_file_name: str, submission_ids: set[str] | None=None) -> bytes:
+def filter_and_rename_submission_zip(zip_bytes: bytes, submission_id_to_student_name_mapping: dict[str, str], assignment_name: str, zip_file_name: str, submission_ids: set[str] | None=None) -> bytes:
     input_zip = io.BytesIO(zip_bytes)
     output_zip = io.BytesIO()
-    if submission_ids and len(submission_ids) == (len(zipfile.ZipFile(input_zip, "r").infolist())-2):
-        return zip_bytes
     try:
         with zipfile.ZipFile(input_zip, "r") as zin:
             with zipfile.ZipFile(output_zip, "w", compression=zipfile.ZIP_DEFLATED,) as zout:
@@ -303,7 +301,7 @@ def get_graded_submission_zip_bytes_helper(_conn: Conn, course_id: str, assignme
 
 def get_graded_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_id: str, submission_id_to_student_name_mapping: dict[str, str], assignment_name: str, zip_file_name: str, submission_ids: set[str] | None =None, _progress_callback: Callable[[float], Any] | None =None) -> tuple[str, int]:
     zip_bytes = get_graded_submission_zip_bytes_helper(_conn, course_id, assignment_id, _progress_callback)
-    bytes = filter_submission_zip(zip_bytes, submission_id_to_student_name_mapping, assignment_name, zip_file_name, submission_ids)
+    bytes = filter_and_rename_submission_zip(zip_bytes, submission_id_to_student_name_mapping, assignment_name, zip_file_name, submission_ids)
     os.makedirs('large_data/', exist_ok=True)
     with open('large_data/get_graded_submissions_zip_bytes.bin', 'wb') as f:
         f.write(bytes)
