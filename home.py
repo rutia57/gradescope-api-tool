@@ -18,6 +18,7 @@ import uuid
 import warnings
 import zipfile
 from collections import defaultdict
+from diskcache import Cache # type: ignore[import-untyped]
 from google.cloud import firestore
 
 from analytics import (
@@ -86,6 +87,8 @@ else:
 
 if 'firestore_db' not in st.session_state:
     st.session_state.firestore_db = firestore.Client.from_service_account_json(key_file) # type: ignore
+if 'ran_export' not in st.session_state:
+    st.session_state.ran_export = False
 
 def show_error(message: str, *, context: str | None = None) -> None:
     log_error(firestore_db=st.session_state.firestore_db, error=message, context=context or "st.error")
@@ -149,7 +152,8 @@ with container:
                 st.session_state[var] = None
         if st.session_state.session_from_ext:
             if 'selected_course_name' not in st.session_state:
-                st.cache_data.clear()
+                _cache = Cache("disk_cache")
+                _cache.clear()
                 st.session_state['selected_course_name'] = default_course_option
             if 'selected_assignment_name' not in st.session_state:
                 st.session_state['selected_assignment_name'] = default_assignment_option
@@ -178,6 +182,7 @@ with container:
             st.session_state.download_button_disabled = True
 
         def update_state_hash() -> None:
+            st.session_state['ran_export'] = False
             st.session_state.state_hash = hash(
                 f'{st.session_state.gs_conn.name if st.session_state.gs_conn is not None else None}_'
                 f'{st.session_state.gs_conn.email if st.session_state.gs_conn is not None else None}_'
@@ -388,44 +393,60 @@ with container:
                                     with download_original_submissions_expander:
                                         st.multiselect('Select students', users_with_grades, default=users_with_grades, format_func=lambda x: f'{x.first_name+" "+x.last_name:<{max_student_name_length+1}} [{x.email_address}]', key='selected_students_submissions')
                                 export_button_col,c2,c3,_ = st.columns([4,3,1,2])
-                                with c3:
-                                    success_message_placeholder = st.empty()
-                                grades_download_button_slot = st.empty()
-                                grades_download_button_slot.download_button(
-                                    f'**Download graded submissions with feedback for selected students ({len(st.session_state.selected_students_submissions)}) (.zip containing .pdf files)**',
-                                    b'',
-                                    file_name=f'{assignment.name.replace(" ","")}_graded_submissions_with_comments_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
-                                    on_click=lambda: increment_button_count('download_graded_submissions', len(b'')),
-                                    disabled=True,
-                                    key=str(uuid.uuid4()),
-                                )
                                 with c2:
                                     progress_placeholder = st.empty()
-                                    def progress_cb(n: float) -> None:
-                                        progress_placeholder.progress(min(n,1.0))
-                                        if n <= 1:
-                                            success_message_placeholder.empty()
-                                            grades_download_button_slot.empty()
-                                            grades_download_button_slot.download_button(
-                                                f'**Download graded submissions with feedback for selected students ({len(st.session_state.selected_students_submissions)}) (.zip containing .pdf files)**',
-                                                b'',
-                                                file_name=f'{assignment.name.replace(" ","")}_graded_submissions_with_comments_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
-                                                on_click=lambda: increment_button_count('download_graded_submissions', len(b'')),
-                                                disabled=True,
-                                                key=str(uuid.uuid4()),
-                                            )
-                                        else:
-                                            success_message_placeholder.empty()
-                                            success_message_placeholder.success('Export complete!')
-                                            grades_download_button_slot.empty()
-                                            grades_download_button_slot.download_button(
-                                                f'**Download graded submissions with feedback for selected students ({len(st.session_state.selected_students_submissions)}) (.zip containing .pdf files)**',
-                                                open(graded_submissions_bytes_path, 'rb').read(),
-                                                file_name=f'{assignment.name.replace(" ","")}_graded_submissions_with_comments_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
-                                                on_click=lambda: increment_button_count('download_graded_submissions', graded_submissions_bytes_len),
-                                                disabled=False,
-                                                key=str(uuid.uuid4()),
-                                            )
+                                with c3:
+                                    success_message_placeholder = st.empty()
+
+                                def progress_cb(n: float) -> None:
+                                    progress_placeholder.progress(min(n,1.0))
+                                    if n <= 1:
+                                        success_message_placeholder.empty()
+                                        grades_download_button_slot.download_button(
+                                            f'**Download graded submissions with feedback for selected students ({len(st.session_state.selected_students_submissions)}) (.zip containing .pdf files)**',
+                                            b'',
+                                            file_name=f'{assignment.name.replace(" ","")}_graded_submissions_with_comments_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
+                                            on_click=lambda: increment_button_count('download_graded_submissions', len(b'')),
+                                            disabled=True,
+                                            key=str(uuid.uuid4()),
+                                        )
+                                    else:
+                                        success_message_placeholder.empty()
+                                        success_message_placeholder.success('Export complete!')
+                                        buttons_container = grades_download_button_slot.container()
+                                        for j, (path, file_count) in enumerate(zip(st.session_state.graded_submissions_bytes_paths, st.session_state.graded_submissions_bytes_path_counts), start=1):
+                                            if len(st.session_state.graded_submissions_bytes_paths) == 1:
+                                                buttons_container.download_button(
+                                                    f'**Download graded submissions with feedback for selected students ({len(st.session_state.selected_students_submissions)}) (.zip containing .pdf files)**',
+                                                    open(path, 'rb').read(),
+                                                    file_name=f'{assignment.name.replace(" ","")}_graded_submissions_with_comments_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
+                                                    on_click=lambda: increment_button_count('download_graded_submissions', st.session_state.graded_submissions_bytes_len),
+                                                    disabled=False,
+                                                    key=str(uuid.uuid4()),
+                                                )
+                                            else:
+                                                buttons_container.download_button(
+                                                    f'**[Part {j} of {len(st.session_state.graded_submissions_bytes_paths)}] Download graded submissions with feedback for selected students ({file_count}) (.zip containing .pdf files)**',
+                                                    open(path, 'rb').read(),
+                                                    file_name=f'{assignment.name.replace(" ","")}_graded_submissions_with_comments_{j}_of_{len(st.session_state.graded_submissions_bytes_paths)}_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
+                                                    on_click=lambda: increment_button_count('download_graded_submissions', st.session_state.graded_submissions_bytes_len),
+                                                    disabled=False,
+                                                    key=str(uuid.uuid4()),
+                                                )
+
+                                if not st.session_state['ran_export']:
+                                    grades_download_button_slot = st.empty()
+                                    grades_download_button_slot.download_button(
+                                        f'**Download graded submissions with feedback for selected students ({len(st.session_state.selected_students_submissions)}) (.zip containing .pdf files)**',
+                                        b'',
+                                        file_name=f'{assignment.name.replace(" ","")}_graded_submissions_with_comments_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
+                                        on_click=lambda: increment_button_count('download_graded_submissions', len(b'')),
+                                        disabled=True,
+                                        key=str(uuid.uuid4()),
+                                    )
+                                else:
+                                    grades_download_button_slot = st.empty()
+                                    progress_cb(1.1)
 
                             with error_logged_section(firestore_db=st.session_state.firestore_db, name="Show assignment outline & stats section"):
                                 st.markdown(f'#### 4. Assignment outline info & question stats')
@@ -444,10 +465,11 @@ with container:
                             with error_logged_section(firestore_db=st.session_state.firestore_db, name="Graded submissions export & download"):
                                 with export_button_col:
                                     export_button = st.button(f"Export graded submissions with feedback for selected students ({len(st.session_state.selected_students_submissions)}) (.zip containing .pdf files)")
-                                    st.caption('🐌 Warning: This export can take a while (up to ~30-60 mins if the Gradescope server is busy) for classes with many (80+) students, even if not all students are selected. You\'ll get an email when the export is complete.')
+                                    st.caption('🐌 Warning: This export can take a while (up to ~30 mins if the Gradescope server is busy) for classes with many (80+) students, even if not all students are selected. You\'ll get an email when the export is complete.')
                                     if export_button:
+                                        st.session_state.ran_export = True
                                         with st.spinner('Downloading graded submissions...', show_time=True):
-                                            graded_submissions_bytes_path, graded_submissions_bytes_len = get_graded_submissions_zip_bytes(
+                                            st.session_state.graded_submissions_bytes_paths, st.session_state.graded_submissions_bytes_path_counts, st.session_state.graded_submissions_bytes_len = get_graded_submissions_zip_bytes(
                                                 conn,
                                                 course_id,
                                                 assignment_id,
@@ -479,35 +501,35 @@ with container:
                                         with st.expander('Submissions summary'):
                                             submission_summary_df = get_submission_summary(st.session_state.selected_students_submissions, grades_metadata, successfully_downloaded_original_submission)
                                             st.markdown(submission_summary_df.map(lambda x: x.replace('\n', '<br>') if isinstance(x, str) else x).to_html(escape=False, index=False, header=False), unsafe_allow_html=True)
-                                    download_original_submissions = st.download_button(
-                                        f'**Download original submissions for selected students ({len(successfully_downloaded_original_submission)}) (.zip containing .pdf files)**',
-                                        open(original_submissions_bytes_path, 'rb').read(),
-                                        file_name=f'{assignment.name.replace(" ","")}_original_submissions_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
-                                        on_click=lambda: increment_button_count('download_original_submissions', original_submissions_bytes_len),
-                                    )
+                                        download_original_submissions = st.download_button(
+                                            f'**Download original submissions for selected students ({len(successfully_downloaded_original_submission)}) (.zip containing .pdf files)**',
+                                            open(original_submissions_bytes_path, 'rb').read(),
+                                            file_name=f'{assignment.name.replace(" ","")}_original_submissions_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
+                                            on_click=lambda: increment_button_count('download_original_submissions', original_submissions_bytes_len),
+                                        )
 
                         except NotImplementedError as e:
                             show_error(str(e))
 
-    mem_button = st.button('save memory usage report info')
-    if mem_button:
-        import sys
-        objs = [(name, obj, sys.getsizeof(obj)/1024/1024) for (name,obj) in globals().items()]
-        os.makedirs('tmp/data',exist_ok=True)
-        with open('tmp/data/printed_output.txt', 'a') as file:
-            for name, obj, size in sorted(objs, key=lambda x: x[2], reverse=True):
-                try:
-                    file.write(f"{name}, {type(obj).__name__}, {size:.4f} MB\n")
-                except:
-                    pass
-    #     snapshot = tracemalloc.take_snapshot()
-    #     tracemalloc_name = save_tracemalloc_file(snapshot)
-    #     save_memory_usage(limit=50)
-    #     send_email_with_attachment(tracemalloc_name,'tracemalloc report', '', gmail_key_file)
-    #     send_email_with_attachment('tmp/data/memory_report.tsv','memory report', '', gmail_key_file)
-        send_email_with_attachment('tmp/data/printed_output.txt','printed output', '', gmail_key_file)
-        st.json(open('large_data/get_original_submissions_zip_bytes.bin', 'rb').read())
-        st.json(open('large_data/get_graded_submissions_zip_bytes.bin', 'rb').read())
+    # mem_button = st.button('save memory usage report info')
+    # if mem_button:
+    #     import sys
+    #     objs = [(name, obj, sys.getsizeof(obj)/1024/1024) for (name,obj) in globals().items()]
+    #     os.makedirs('tmp/data',exist_ok=True)
+    #     with open('tmp/data/printed_output.txt', 'a') as file:
+    #         for name, obj, size in sorted(objs, key=lambda x: x[2], reverse=True):
+    #             try:
+    #                 file.write(f"{name}, {type(obj).__name__}, {size:.4f} MB\n")
+    #             except:
+    #                 pass
+    # #     snapshot = tracemalloc.take_snapshot()
+    # #     tracemalloc_name = save_tracemalloc_file(snapshot)
+    # #     save_memory_usage(limit=50)
+    # #     send_email_with_attachment(tracemalloc_name,'tracemalloc report', '', gmail_key_file)
+    # #     send_email_with_attachment('tmp/data/memory_report.tsv','memory report', '', gmail_key_file)
+    #     send_email_with_attachment('tmp/data/printed_output.txt','printed output', '', gmail_key_file)
+    #     st.json(open('large_data/get_original_submissions_zip_bytes.bin', 'rb').read())
+    #     st.json(open('large_data/get_graded_submissions_zip_bytes.bin', 'rb').read())
 
     try:
         log_stats(firestore_db=st.session_state.firestore_db, firestore_collection_name=firestore_collection_name_key)

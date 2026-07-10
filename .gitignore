@@ -7,6 +7,7 @@ __pycache__/
 gradescope_profiles/
 data/
 disk_cache/
+large_data/
 tmp/
 firebase-key.json
 gmail-keys.json
