@@ -358,7 +358,7 @@ with container:
                                 with download_original_submissions_container:
                                     download_original_submissions_expander = st.expander('Select students and preview submissions data', expanded=False)
                                     with download_original_submissions_expander:
-                                        st.multiselect('Select students', users_with_grades, default=users_with_grades, format_func=lambda x: f'{x.first_name+" "+x.last_name:<{max_student_name_length+1}} [{x.email_address}]', key='selected_students_submissions', max_selections=40)
+                                        st.multiselect('Select students', users_with_grades, default=users_with_grades[:40], format_func=lambda x: f'{x.first_name+" "+x.last_name:<{max_student_name_length+1}} [{x.email_address}]', key='selected_students_submissions', max_selections=40)
                                 export_button_col,c2,c3,_ = st.columns([4,3,1,2])
                                 with c3:
                                     success_message_placeholder = st.empty()
