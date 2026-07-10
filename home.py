@@ -421,7 +421,7 @@ with container:
                             with error_logged_section(firestore_db=st.session_state.firestore_db, name="Graded submissions export & download"):
                                 with export_button_col:
                                     export_button = st.button(f"Export graded submissions with feedback for all students ({len(users_with_grades)}) (.zip containing .pdf files)")
-                                    st.caption('🐌 Warning: This export can take a while (up to ~30-60 mins if the Gradescope server is busy) for classes with many (80+) students, even if not all students are selected. You\'ll get an email when the export is complete.')
+                                    st.caption('🐌 Warning: This export can take a while (up to ~30 mins if the Gradescope server is busy) for classes with many (80+) students, even if not all students are selected. You\'ll get an email when the export is complete.')
                                     if export_button:
                                         with st.spinner('Downloading graded submissions...', show_time=True):
                                             st.session_state.graded_submissions_url = get_graded_submissions_zip_bytes(
@@ -439,7 +439,7 @@ with container:
                                 with download_original_submissions_container:
                                     with download_original_submissions_expander:
                                         with st.spinner('Downloading original PDF submissions...', show_time=True):
-                                            original_submissions_paths_metadata, successfully_downloaded_original_submission = get_original_submissions_zip_bytes(
+                                            original_submissions_paths_metadata, successfully_downloaded_original_submission, too_large = get_original_submissions_zip_bytes(
                                                 conn,
                                                 course_id,
                                                 assignment_id,
@@ -453,6 +453,9 @@ with container:
                                                     if (sid := student_to_assignment_submissions[s.identifier]) is not None
                                                 ]
                                             )
+                                            if len(too_large) > 0:
+                                                st.warning(f'Note: The following {len(too_large)} files failed to download because they\'re too large. You can download '
+                                                           f'them manually from the Gradescope website. [{", ".join(too_large)}]')
                                         with st.expander('Submissions summary'):
                                             submission_summary_df = get_submission_summary(st.session_state.selected_students_submissions, grades_metadata, successfully_downloaded_original_submission)
                                             st.markdown(submission_summary_df.map(lambda x: x.replace('\n', '<br>') if isinstance(x, str) else x).to_html(escape=False, index=False, header=False), unsafe_allow_html=True)

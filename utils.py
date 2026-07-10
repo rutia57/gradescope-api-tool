@@ -231,7 +231,7 @@ def get_submission_original_pdf_bytes(_conn: Conn, course_id: str, assignment_id
     return None
 
 @disk_cache_data(ttl=3600)
-def get_original_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_id: str, assignment_name: str, submission_ids_and_student_names: list[tuple[str, str]],) -> tuple[list[tuple[int, int, int, str]], set[str]]:
+def get_original_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_id: str, assignment_name: str, submission_ids_and_student_names: list[tuple[str, str]],) -> tuple[list[tuple[int, int, int, str]], set[str], set[str]]:
     os.makedirs("large_data", exist_ok=True)
 
     if _conn == SAMPLE_PLACEHOLDER_GS_CONN:
@@ -250,7 +250,7 @@ def get_original_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_i
         bytes = output_zip.getvalue()
         with open("large_data/sample_original_submissions.bin", 'wb') as f:
             f.write(bytes)
-        return [(1, len(submission_ids_and_student_names), len(bytes), "large_data/sample_original_submissions.bin")], {s[1] for s in submission_ids_and_student_names}
+        return [(1, len(submission_ids_and_student_names), len(bytes), "large_data/sample_original_submissions.bin")], {s[1] for s in submission_ids_and_student_names}, set()
 
     successfully_downloaded: set[str] = set()
     zip_parts: list[tuple[int, int, int, str]] = []
@@ -258,6 +258,7 @@ def get_original_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_i
     pdfs_in_part = 0
     current_path = f"large_data/get_original_submissions_zip_bytes_part{part}.zip"
     zout = zipfile.ZipFile(current_path, "w", compression=zipfile.ZIP_DEFLATED)
+    failed_to_download = set()
     try:
         for submission_id, student_name in submission_ids_and_student_names:
             pdf_bytes = get_submission_original_pdf_bytes(_conn, course_id, assignment_id, submission_id)
@@ -270,6 +271,9 @@ def get_original_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_i
             # Conservative estimate.
             estimated_size = current_size + len(pdf_bytes)
             if pdfs_in_part > 0 and estimated_size > MAX_FILE_SIZE:
+                if pdfs_in_part == 0:
+                    failed_to_download.add(filename)
+                    continue
                 zip_parts.append((part, pdfs_in_part, current_size, current_path))
                 part += 1
                 pdfs_in_part = 0
@@ -288,7 +292,7 @@ def get_original_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_i
             zout.close()
         except Exception:
             pass
-    return zip_parts, successfully_downloaded
+    return zip_parts, successfully_downloaded, failed_to_download
 
 
 @sample_report_available
