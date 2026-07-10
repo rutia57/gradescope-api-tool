@@ -472,7 +472,7 @@ with container:
                                         )
                                         with c1:
                                             download_original_submissions = st.download_button(
-                                                f'**Download original submissions for selected students ({original_submissions_download_part[1]}) (.zip containing .pdf files)**',
+                                                f'**Download original submissions for selected students ({original_submissions_download_part[1]}) (.zip containing .pdf files) (part {original_submissions_download_part[0]} of {len(original_submissions_paths_metadata)})**',
                                                 open(original_submissions_download_part[3], 'rb').read(),
                                                 file_name=f'{assignment.name.replace(" ","")}_original_submissions_{original_submissions_download_part[0]}_of_{len(original_submissions_paths_metadata)}_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
                                                 on_click=lambda: increment_button_count('download_original_submissions'),
