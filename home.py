@@ -461,15 +461,18 @@ with container:
                                             st.markdown(submission_summary_df.map(lambda x: x.replace('\n', '<br>') if isinstance(x, str) else x).to_html(escape=False, index=False, header=False), unsafe_allow_html=True)
                                     if original_submissions_paths_metadata:
                                         c1, c2, c3 = st.columns([5,3,4])
-                                        with c2:
-                                            st.write(f"Select which part of {len(original_submissions_paths_metadata)} to download (large files are split into multiple parts to avoid failures due to memory constraints):")
-                                        with c3:
-                                            original_submissions_download_part = st.selectbox(
-                                                label="",
-                                                options=original_submissions_paths_metadata,
-                                            format_func=lambda x: f"[Part {x[0]} of {len(original_submissions_paths_metadata)}] ({x[1]} files, {x[2]/(1024*1024):.2f} MB)",
-                                            label_visibility="collapsed",
-                                        )
+                                        if len(original_submissions_paths_metadata) > 1:
+                                            with c2:
+                                                st.write(f"Select which part of {len(original_submissions_paths_metadata)} to download (large files are split into multiple parts to avoid failures due to memory constraints):")
+                                            with c3:
+                                                original_submissions_download_part = st.selectbox(
+                                                    label="",
+                                                    options=original_submissions_paths_metadata,
+                                                format_func=lambda x: f"[Part {x[0]} of {len(original_submissions_paths_metadata)}] ({x[1]} files, {x[2]/(1024*1024):.2f} MB)",
+                                                label_visibility="collapsed",
+                                            )
+                                        else:
+                                            original_submissions_download_part = original_submissions_paths_metadata[0]
                                         with c1:
                                             download_original_submissions = st.download_button(
                                                 f'**Download original submissions for selected students ({original_submissions_download_part[1]}) (.zip containing .pdf files) (part {original_submissions_download_part[0]} of {len(original_submissions_paths_metadata)})**',
