@@ -169,6 +169,17 @@ with container:
                 f'{st.session_state.selected_course_name}_'
             )
 
+        def update_selected_student_grade_preview() -> None:
+            if st.session_state.selected_students_grades:
+                st.session_state['selected_student_grade_preview'] = st.session_state.selected_students_grades[0]
+            else:
+                st.session_state['selected_student_grade_preview'] = None
+
+        def reset_selected_students() -> None:
+            st.session_state.reset_student_selection = True
+            update_state_hash()
+            update_selected_student_grade_preview()
+
         def increment_button_count(button_name: str) -> None:
             st.session_state.button_click_counts[st.session_state['state_hash']][button_name] += 1
 
@@ -243,6 +254,11 @@ with container:
                                 grade_breakdowns = get_grade_breakdowns(users, questions, comments, total_scores, student_to_question_to_question_submission, grader_by_question_submission, questions_order)
                                 users_with_grades = [u for u in users if grades_metadata[u.email_address]['submitted']]
 
+                                if st.session_state.pop("reset_student_selection", False):
+                                    st.session_state.selected_students_grades = users_with_grades
+                                    st.session_state.selected_students_submissions = users_with_grades
+                                    st.session_state.selected_student_grade_preview = users_with_grades[0] if users_with_grades else None
+
                             with error_logged_section(firestore_db=st.session_state.firestore_db, name="Show assignment summary"):
 
                                 with st.expander('Assignment summary', expanded=True):
@@ -301,17 +317,12 @@ with container:
                                 )
 
                             with error_logged_section(firestore_db=st.session_state.firestore_db, name="Show grade feedback files section"):
-                                def update_selected_student_grade_preview() -> None:
-                                    if st.session_state.selected_students_grades:
-                                        st.session_state['selected_student_grade_preview'] = st.session_state.selected_students_grades[0]
-                                    else:
-                                        st.session_state['selected_student_grade_preview'] = None
                                 st.markdown(f'#### 2. Grade feedback files for students')
                                 st.caption('Text files with each student\'s grade breakdown and comments.')
                                 st.caption('Note: "[^]" before a comment indicates that this comment is linked to a location in the submission PDF')
                                 with st.expander('Select students and preview grade feedback', expanded=False):
                                     st.multiselect('Select students', users_with_grades, default=users_with_grades, format_func=lambda x: f'{x.first_name+" "+x.last_name:<{max_student_name_length+1}} [{x.email_address}]', key='selected_students_grades',
-                                                on_change=update_selected_student_grade_preview)
+                                                on_change=reset_selected_students)
                                     if st.session_state.selected_students_grades:
                                         with st.expander('Preview grade feedback'):
                                             grade_feedback_strings = build_feedback_files(
@@ -358,7 +369,7 @@ with container:
                                 with download_original_submissions_container:
                                     download_original_submissions_expander = st.expander('Select students and preview submissions data', expanded=False)
                                     with download_original_submissions_expander:
-                                        st.multiselect('Select students', users_with_grades, default=users_with_grades, format_func=lambda x: f'{x.first_name+" "+x.last_name:<{max_student_name_length+1}} [{x.email_address}]', key='selected_students_submissions')
+                                        st.multiselect('Select students', users_with_grades, default=users_with_grades, format_func=lambda x: f'{x.first_name+" "+x.last_name:<{max_student_name_length+1}} [{x.email_address}]', key='selected_students_submissions', on_change=reset_selected_students)
                                 export_button_col,c2,c3,_ = st.columns([4,3,1,2])
                                 with c3:
                                     success_message_placeholder = st.empty()
