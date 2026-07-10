@@ -420,9 +420,9 @@ with container:
                                             grades_download_button_slot.empty()
                                             grades_download_button_slot.download_button(
                                                 f'**Download graded submissions with feedback for selected students ({len(st.session_state.selected_students_submissions)}) (.zip containing .pdf files)**',
-                                                graded_submissions_bytes,
+                                                open(graded_submissions_bytes_path).read(),
                                                 file_name=f'{assignment.name.replace(" ","")}_graded_submissions_with_comments_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
-                                                on_click=lambda: increment_button_count('download_graded_submissions', len(graded_submissions_bytes)),
+                                                on_click=lambda: increment_button_count('download_graded_submissions', graded_submissions_bytes_len),
                                                 disabled=False,
                                                 key=str(uuid.uuid4()),
                                             )
@@ -447,7 +447,7 @@ with container:
                                     st.caption('🐌 Warning: This export can take a while (up to ~30-60 mins if the Gradescope server is busy) for classes with many (80+) students, even if not all students are selected. You\'ll get an email when the export is complete.')
                                     if export_button:
                                         with st.spinner('Downloading graded submissions...', show_time=True):
-                                            graded_submissions_bytes = get_graded_submissions_zip_bytes(
+                                            graded_submissions_bytes_path, graded_submissions_bytes_len = get_graded_submissions_zip_bytes(
                                                 conn,
                                                 course_id,
                                                 assignment_id,
@@ -462,7 +462,7 @@ with container:
                                 with download_original_submissions_container:
                                     with download_original_submissions_expander:
                                         with st.spinner('Downloading original PDF submissions...', show_time=True):
-                                            original_submissions_bytes, successfully_downloaded_original_submission = get_original_submissions_zip_bytes(
+                                            original_submissions_bytes_path, original_submissions_bytes_len, successfully_downloaded_original_submission = get_original_submissions_zip_bytes(
                                                 conn,
                                                 course_id,
                                                 assignment_id,
@@ -481,9 +481,9 @@ with container:
                                             st.markdown(submission_summary_df.map(lambda x: x.replace('\n', '<br>') if isinstance(x, str) else x).to_html(escape=False, index=False, header=False), unsafe_allow_html=True)
                                     download_original_submissions = st.download_button(
                                         f'**Download original submissions for selected students ({len(successfully_downloaded_original_submission)}) (.zip containing .pdf files)**',
-                                        original_submissions_bytes,
+                                        original_submissions_bytes_path,
                                         file_name=f'{assignment.name.replace(" ","")}_original_submissions_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
-                                        on_click=lambda: increment_button_count('download_original_submissions', len(original_submissions_bytes)),
+                                        on_click=lambda: increment_button_count('download_original_submissions', len(original_submissions_bytes_len)),
                                     )
 
                         except NotImplementedError as e:

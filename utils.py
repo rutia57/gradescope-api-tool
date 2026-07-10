@@ -4,6 +4,7 @@ import datetime
 import html
 import io
 import json
+import os
 import pickle
 import re
 import time
@@ -228,7 +229,7 @@ def get_submission_original_pdf_bytes(_conn: Conn, course_id: str, assignment_id
     return None
 
 @disk_cache_data(ttl=3600)
-def get_original_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_id: str, assignment_name: str, submission_ids_and_student_names: list[tuple[str, str]]) -> tuple[bytes, set[str]]:
+def get_original_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_id: str, assignment_name: str, submission_ids_and_student_names: list[tuple[str, str]]) -> tuple[bytes, int, set[str]]:
     if _conn == SAMPLE_PLACEHOLDER_GS_CONN:
         output_zip = io.BytesIO()
         with open("sample_reports_data/get_original_submissions_zip_bytes.pkl", "rb") as f:
@@ -253,7 +254,13 @@ def get_original_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_i
                 zout.writestr(filename, pdf_bytes)
                 successfully_downloaded.add(student_name)
     output_zip.seek(0)
-    return output_zip.getvalue(), successfully_downloaded
+    bytes = output_zip.getvalue()
+    os.make_dirs('large_data/', exist_ok=True)
+    with open('large_data/get_original_submissions_zip_bytes', 'wb') as f:
+        f.write(bytes)
+    return 'large_data/get_original_submissions_zip_bytes', len(bytes), successfully_downloaded
+
+
 
 @sample_report_available
 @disk_cache_data(ttl=3600, ignore_args={"progress_callback"})
@@ -288,9 +295,13 @@ def get_graded_submission_zip_bytes_helper(_conn: Conn, course_id: str, assignme
             time.sleep(1)
     return b''
 
-def get_graded_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_id: str, submission_id_to_student_name_mapping: dict[str, str], assignment_name: str, zip_file_name: str, submission_ids: set[str] | None =None, _progress_callback: Callable[[float], Any] | None =None) -> bytes:
+def get_graded_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_id: str, submission_id_to_student_name_mapping: dict[str, str], assignment_name: str, zip_file_name: str, submission_ids: set[str] | None =None, _progress_callback: Callable[[float], Any] | None =None) -> tuple[bytes, int]:
     zip_bytes = get_graded_submission_zip_bytes_helper(_conn, course_id, assignment_id, _progress_callback)
-    return filter_submission_zip(zip_bytes, submission_id_to_student_name_mapping, assignment_name, zip_file_name, submission_ids)
+    bytes = filter_submission_zip(zip_bytes, submission_id_to_student_name_mapping, assignment_name, zip_file_name, submission_ids)
+    os.make_dirs('large_data/', exist_ok=True)
+    with open('large_data/get_graded_submissions_zip_bytes', 'wb') as f:
+        f.write(bytes)
+    return 'large_data/get_graded_submissions_zip_bytes', len(bytes)
 
 ############################### Extract raw data from Gradescope ################################
 @sample_report_available
