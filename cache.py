@@ -9,6 +9,7 @@ from itertools import chain
 from tqdm import tqdm
 import json
 import os
+import threading
 import smtplib
 import pickle
 from collections.abc import Callable
@@ -23,6 +24,8 @@ R = TypeVar("R")
 
 os.makedirs("disk_cache", exist_ok=True)
 _cache = Cache("disk_cache")
+_cache_events: dict[str, threading.Event] = {}
+_cache_lock = threading.Lock()
 
 def _hash_value(
     value: Any,
@@ -65,12 +68,32 @@ def disk_cache_data(
                 key_dict[name] = _hash_value(value, hash_funcs)
             key_bytes = pickle.dumps((func.__module__, func.__qualname__, key_dict), protocol=pickle.HIGHEST_PROTOCOL)
             key = hashlib.sha256(key_bytes).hexdigest()
+
             result = _cache.get(key, default=None)
             if result is not None:
                 return cast(R, result)
-            result2 = func(*args, **kwargs)
-            _cache.set(key,result2,expire=ttl)
-            return result2
+
+            with _cache_lock:
+                event = _cache_events.get(key)
+                if event is None:
+                    event = threading.Event()
+                    _cache_events[key] = event
+                    first = True
+                else:
+                    first = False
+
+            if not first:
+                event.wait()
+                return cast(R, _cache.get(key))
+
+            try:
+                result = func(*args, **kwargs)
+                _cache.set(key, result, expire=ttl)
+                return cast(R, result)
+            finally:
+                with _cache_lock:
+                    _cache_events.pop(key, None)
+                event.set()
         def clear() -> None:
             _cache.clear()
         wrapper.clear = clear  # type: ignore[attr-defined]

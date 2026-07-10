@@ -3,6 +3,7 @@ import datetime
 import io
 import json
 import os
+import shutil
 import tempfile
 import traceback
 import uuid
@@ -54,6 +55,13 @@ st.set_page_config(page_title="Gradescope API Tool", page_icon="extension/icon.p
 st.set_page_config(layout='wide')
 st.markdown("# 🎓 Gradescope API Tool")
 st.session_state['session_from_ext'] = st.query_params.get("session_from_ext")
+
+if st.query_params.get("reset_cache") is not None:
+    with st.spinner('Clearing disk cache...'):
+        get_original_submissions_zip_bytes.clear()  # type: ignore
+        os.makedirs("large_data", exist_ok=True)
+        shutil.rmtree("large_data")
+
 
 if os.path.exists("firebase-key.json"):
     key_file = "firebase-key.json"
@@ -156,8 +164,6 @@ with container:
             )
 
         # session vars used for graded zip download
-        if "graded_submissions_bytes" not in st.session_state:
-            st.session_state.graded_submissions_bytes = None
         if "download_button_disabled" not in st.session_state:
             st.session_state.download_button_disabled = True
 
@@ -452,29 +458,29 @@ with container:
                                                 course_id,
                                                 assignment_id,
                                                 assignment.name.replace(" ",""),
-                                                [
+                                                sorted([
                                                     (
                                                         sid,
                                                         f"{s.first_name.replace(' ', '_')}_{s.last_name.replace(' ', '_')}"
                                                     )
                                                     for s in st.session_state.selected_students_submissions
                                                     if (sid := student_to_assignment_submissions[s.identifier]) is not None
-                                                ]
+                                                ])
                                             )
-                                            if len(too_large) > 0:
-                                                st.warning(f'Note: The following {len(too_large)} files failed to download because they\'re too large. You can download '
-                                                           f'them manually from the Gradescope website. [{", ".join(too_large)}]')
                                         with st.expander('Submissions summary'):
                                             submission_summary_df = get_submission_summary(st.session_state.selected_students_submissions, grades_metadata, successfully_downloaded_original_submission)
                                             st.markdown(submission_summary_df.map(lambda x: x.replace('\n', '<br>') if isinstance(x, str) else x).to_html(escape=False, index=False, header=False), unsafe_allow_html=True)
                                     if original_submissions_paths_metadata:
+                                        if len(too_large) > 0:
+                                            st.warning(f'Note: The following {len(too_large)} file(s) failed to download because they\'re too large (>50MB). You can download '
+                                                        f'them manually from the Gradescope website. [{", ".join(too_large)}]')
                                         c1, c2, c3 = st.columns([5,3,4])
                                         if len(original_submissions_paths_metadata) > 1:
                                             with c2:
                                                 st.write(f"Select which part of {len(original_submissions_paths_metadata)} to download (large files are split into multiple parts to avoid failures due to memory constraints):")
                                             with c3:
                                                 original_submissions_download_part = st.selectbox(
-                                                    label="",
+                                                    label="[label]",
                                                     options=original_submissions_paths_metadata,
                                                 format_func=lambda x: f"[Part {x[0]} of {len(original_submissions_paths_metadata)}] ({x[1]} files, {x[2]/(1024*1024):.2f} MB)",
                                                 label_visibility="collapsed",
