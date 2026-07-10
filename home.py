@@ -54,6 +54,7 @@ st.set_page_config(page_title="Gradescope API Tool", page_icon="extension/icon.p
 st.set_page_config(layout='wide')
 st.markdown("# 🎓 Gradescope API Tool")
 st.session_state['session_from_ext'] = st.query_params.get("session_from_ext")
+st.cache_data.clear()
 
 if os.path.exists("firebase-key.json"):
     key_file = "firebase-key.json"
@@ -392,7 +393,7 @@ with container:
                                             grades_download_button_slot.empty()
                                             grades_download_button_slot.download_button(
                                                 f'**Download graded submissions with feedback for selected students ({len(st.session_state.selected_students_submissions)}) (.zip containing .pdf files)**',
-                                                st.session_state.graded_submissions_bytes,
+                                                graded_submissions_bytes,
                                                 file_name=f'{assignment.name.replace(" ","")}_graded_submissions_with_comments_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
                                                 on_click=lambda: increment_button_count('download_graded_submissions'),
                                                 disabled=False,
@@ -419,7 +420,7 @@ with container:
                                     st.caption('🐌 Warning: This export can take a while (up to ~30-60 mins if the Gradescope server is busy) for classes with many (80+) students, even if not all students are selected. You\'ll get an email when the export is complete.')
                                     if export_button:
                                         with st.spinner('Downloading graded submissions...', show_time=True):
-                                            st.session_state.graded_submissions_bytes = get_graded_submissions_zip_bytes(
+                                            graded_submissions_bytes = get_graded_submissions_zip_bytes(
                                                 conn,
                                                 course_id,
                                                 assignment_id,
