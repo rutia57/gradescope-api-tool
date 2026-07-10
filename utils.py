@@ -4,11 +4,13 @@ import datetime
 import html
 import io
 import json
+import os
 import pickle
 import re
 import time
 import traceback
 import zipfile
+from cache import disk_cache_data
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -31,6 +33,7 @@ from gradescopeapi.classes.assignments import Assignment
 from gradescope_auth import SAMPLE_PLACEHOLDER_GS_CONN, GSConnectionFromSession as Conn
 from st_aggrid import GridOptionsBuilder, JsCode  # type: ignore[import-untyped]
 
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 
 BULLETS = ['•', '◦', '▪']
 
@@ -217,7 +220,7 @@ def format_name(s: Student | Member) -> tuple[str, str]:
             return f'{" ".join(name_parts[0:-1])}', f'{name_parts[-1]}'
 
 ############################# Get submission files from Gradescope #############################
-@st.cache_data(ttl=3600, hash_funcs={Question: lambda q: (q.course_id, q.assignment_id, q.question_id)})
+@disk_cache_data(ttl=3600, hash_funcs={Question: lambda q: (q.course_id, q.assignment_id, q.question_id)})
 def get_submission_original_pdf_bytes(_conn: Conn, course_id: str, assignment_id: str, submission_id: str) -> bytes | None:
     resp = query_endpoint(Endpoint.SUBMISSION, _conn, course_id=course_id, assignment_id=assignment_id, submission_id=submission_id)
     resp_json = resp.json()
@@ -227,8 +230,10 @@ def get_submission_original_pdf_bytes(_conn: Conn, course_id: str, assignment_id
         return pdf_resp.content
     return None
 
-@st.cache_data(ttl=3600)
-def get_original_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_id: str, assignment_name: str, submission_ids_and_student_names: list[tuple[str, str]]) -> tuple[bytes, set[str]]:
+@disk_cache_data(ttl=3600)
+def get_original_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_id: str, assignment_name: str, submission_ids_and_student_names: list[tuple[str, str]],) -> tuple[list[tuple[int, int, int, str]], set[str]]:
+    os.makedirs("large_data", exist_ok=True)
+
     if _conn == SAMPLE_PLACEHOLDER_GS_CONN:
         output_zip = io.BytesIO()
         with open("sample_reports_data/get_original_submissions_zip_bytes.pkl", "rb") as f:
@@ -242,21 +247,52 @@ def get_original_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_i
                         if submission_id in (s[0] for s in submission_ids_and_student_names):
                             zout.writestr(filename, zin.read(filename))
         output_zip.seek(0)
-        return output_zip.getvalue(), {s[1] for s in submission_ids_and_student_names}
-    output_zip = io.BytesIO()
-    successfully_downloaded = set()
-    for submission_id, student_name in submission_ids_and_student_names:
-        pdf_bytes = get_submission_original_pdf_bytes(_conn, course_id, assignment_id, submission_id)
-        if pdf_bytes:
-            with zipfile.ZipFile(output_zip, "a", compression=zipfile.ZIP_DEFLATED) as zout:
-                filename = f'{assignment_name}_{student_name}_{submission_id}_original_submission.pdf'
-                zout.writestr(filename, pdf_bytes)
-                successfully_downloaded.add(student_name)
-    output_zip.seek(0)
-    return output_zip.getvalue(), successfully_downloaded
+        bytes = output_zip.getvalue()
+        with open("large_data/sample_original_submissions.bin", 'wb') as f:
+            f.write(bytes)
+        return [(1, len(submission_ids_and_student_names), len(bytes), "large_data/sample_original_submissions.bin")], {s[1] for s in submission_ids_and_student_names}
+
+    successfully_downloaded: set[str] = set()
+    zip_parts: list[tuple[int, int, int, str]] = []
+    part = 1
+    pdfs_in_part = 0
+    current_path = f"large_data/get_original_submissions_zip_bytes_part{part}.zip"
+    zout = zipfile.ZipFile(current_path, "w", compression=zipfile.ZIP_DEFLATED)
+    try:
+        for submission_id, student_name in submission_ids_and_student_names:
+            pdf_bytes = get_submission_original_pdf_bytes(_conn, course_id, assignment_id, submission_id)
+            if not pdf_bytes:
+                continue
+            filename = f"{assignment_name}_{student_name}_{submission_id}_original_submission.pdf"
+            # If the current zip is already near the limit, finish it before adding another file.
+            zout.close()
+            current_size = os.path.getsize(current_path) if os.path.exists(current_path) else 0
+            # Conservative estimate.
+            estimated_size = current_size + len(pdf_bytes)
+            if pdfs_in_part > 0 and estimated_size > MAX_FILE_SIZE:
+                zip_parts.append((part, pdfs_in_part, current_size, current_path))
+                part += 1
+                pdfs_in_part = 0
+                current_path = f"large_data/get_original_submissions_zip_bytes_part{part}.zip"
+            # reopen whichever zip we're writing to
+            zout = zipfile.ZipFile(current_path, "a", compression=zipfile.ZIP_DEFLATED)
+            zout.writestr(filename, pdf_bytes)
+            pdfs_in_part += 1
+            successfully_downloaded.add(student_name)
+        zout.close()
+        final_size = os.path.getsize(current_path) if os.path.exists(current_path) else 0
+        if pdfs_in_part:
+            zip_parts.append((part, pdfs_in_part, final_size, current_path,))
+    finally:
+        try:
+            zout.close()
+        except Exception:
+            pass
+    return zip_parts, successfully_downloaded
+
 
 @sample_report_available
-@cached(cache=TTLCache(maxsize=100, ttl=3600), key=ignore_some_args)
+@disk_cache_data(ttl=3600, ignore_args={'progress_callback'})
 def get_graded_submission_zip_bytes_helper(_conn: Conn, course_id: str, assignment_id: str, progress_callback: Callable[[float], Any] | None=None) -> str | bytes:
     review_grades_url = Endpoint.REVIEW_GRADES.format(base_url=_conn.account.gradescope_base_url, course_id=course_id, assignment_id=assignment_id)
     review_grades_resp = query_endpoint(Endpoint.REVIEW_GRADES, _conn, course_id=course_id, assignment_id=assignment_id)
@@ -287,6 +323,7 @@ def get_graded_submission_zip_bytes_helper(_conn: Conn, course_id: str, assignme
     #     except Exception:
     #         time.sleep(1)
     # return b''
+    time.sleep(2)
     return Endpoint.ZIP_FILE.value.format(base_url=_conn.account.gradescope_base_url, course_id=course_id, assignment_id=assignment_id)
 
 def get_graded_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_id: str, submission_id_to_student_name_mapping: dict[str, str], assignment_name: str, zip_file_name: str, submission_ids: set[str] | None =None, _progress_callback: Callable[[float], Any] | None =None) -> str | bytes:

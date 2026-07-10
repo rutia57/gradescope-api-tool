@@ -79,3 +79,4 @@ def error_logged_section(firestore_db: firestore.Client, name: str) -> Generator
     except Exception as e:
         log_error(firestore_db=firestore_db, error=e, context=name, state_hash=st.session_state.get("state_hash", ""))
         st.error(f"{name} failed: {e}")
+        traceback.print_exc()
