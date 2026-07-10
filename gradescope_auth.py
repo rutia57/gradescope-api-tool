@@ -80,18 +80,16 @@ def build_session_from_cookies(cookies: list[list[str]] | dict[str, Any]) -> req
     if isinstance(cookies, list):
         for name, value in cookies:
             session.cookies.set(name, value, domain="www.gradescope.com", path="/")
-    else: 
-        for cookie in cookies['cookies']: 
+    else:
+        for cookie in cookies['cookies']:
             session.cookies.set(cookie["name"], cookie["value"], domain=cookie["domain"], path=cookie["path"])
     return session
 
 def login_with_cookies(cookies: list[list[str]]) -> tuple[GSConnectionFromSession, dict[str, str]]:
     session = build_session_from_cookies(cookies)
-    print([c.name for c in session.cookies])
     resp = session.get(BASE_URL)
     soup = BeautifulSoup(resp.text, "html.parser")
     scripts = soup.find_all("script")
-    # print(soup)
     user = {}
     for script in scripts:
         if script.string and "bugsnagClient.user" in script.string:

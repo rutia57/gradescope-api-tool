@@ -174,8 +174,6 @@ with container:
             )
 
         # session vars used for graded zip download
-        if "graded_submissions_bytes" not in st.session_state:
-            st.session_state.graded_submissions_bytes = None
         if "download_button_disabled" not in st.session_state:
             st.session_state.download_button_disabled = True
 
@@ -264,7 +262,7 @@ with container:
                                 student_to_assignment_submissions = get_student_to_assignment_submissions(users, raw_submissions_metadata, grades_metadata)
                             with st.spinner('Loading grader_by_question_submission...'):
                                 grader_by_question_submission = get_grader_by_question_submission(conn, course_id, questions)
-                            with st.spinner('Loading question_to_question_submissinos...'):
+                            with st.spinner('Loading question_to_question_submissions...'):
                                 question_to_submissions = get_question_to_question_submissions(conn, course_id, questions)
                             with st.spinner('Loading raw_data_by_question_submission...'):
                                 comments, total_scores, student_to_question_to_question_submission = get_raw_data_by_question_submission(conn, course_id, users, questions, question_to_submissions, student_to_assignment_submissions)
@@ -371,6 +369,7 @@ with container:
                                                 for student_id, text in grade_feedback_strings.items():
                                                     zf.writestr(f'{assignment.name.replace(" ","")}_{user_mapping[student_id].last_name}_{user_mapping[student_id].first_name}_grade_breakdown_and_feedback.txt', text)
                                             grade_feedback_files_zip_file_bytes = buffer.getvalue()
+                                            del buffer
                                     else:
                                         grade_feedback_files_zip_file_bytes = b''
                                 download_grade_feedback_files = st.download_button(
@@ -501,11 +500,12 @@ with container:
                     file.write(f"{name}, {type(obj).__name__}, {size:.4f} MB")
                 except:
                     pass
-        snapshot = tracemalloc.take_snapshot()
-        tracemalloc_name = save_tracemalloc_file(snapshot)
-        save_memory_usage(limit=50)
-        send_email_with_attachment(tracemalloc_name,'tracemalloc report', '', gmail_key_file)
-        send_email_with_attachment('tmp/data/memory_report.tsv','memory report', '', gmail_key_file)
+    #     snapshot = tracemalloc.take_snapshot()
+    #     tracemalloc_name = save_tracemalloc_file(snapshot)
+    #     save_memory_usage(limit=50)
+    #     send_email_with_attachment(tracemalloc_name,'tracemalloc report', '', gmail_key_file)
+    #     send_email_with_attachment('tmp/data/memory_report.tsv','memory report', '', gmail_key_file)
+        send_email_with_attachment('tmp/data/printed_output.txt','printed output', '', gmail_key_file)
 
     try:
         log_stats(firestore_db=st.session_state.firestore_db, firestore_collection_name=firestore_collection_name_key)
