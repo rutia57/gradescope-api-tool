@@ -460,7 +460,7 @@ with container:
                                             submission_summary_df = get_submission_summary(st.session_state.selected_students_submissions, grades_metadata, successfully_downloaded_original_submission)
                                             st.markdown(submission_summary_df.map(lambda x: x.replace('\n', '<br>') if isinstance(x, str) else x).to_html(escape=False, index=False, header=False), unsafe_allow_html=True)
                                     if original_submissions_paths_metadata:
-                                        c1, c2, c3 = st.columns([4,3,5])
+                                        c1, c2, c3 = st.columns([5,3,4])
                                         with c2:
                                             st.write(f"Select which part of {len(original_submissions_paths_metadata)} to download (large files are split into multiple parts to avoid failures due to memory constraints):")
                                         with c3:
