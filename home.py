@@ -497,7 +497,7 @@ with container:
         with open('tmp/data/printed_output.txt', 'a') as file:
             for name, obj, size in sorted(objs, key=lambda x: x[2], reverse=True):
                 try:
-                    file.write(f"{name}, {type(obj).__name__}, {size:.4f} MB")
+                    file.write(f"{name}, {type(obj).__name__}, {size:.4f} MB\n")
                 except:
                     pass
     #     snapshot = tracemalloc.take_snapshot()
