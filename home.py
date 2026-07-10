@@ -216,7 +216,7 @@ with container:
 
             # Load assignment data
             if st.session_state.selected_assignment_id is not None or st.session_state.session_from_ext is None:
-                with st.spinner('Loading assignment data... (for larger courses, this may take a couple of minutes)', show_time=True):
+                with st.spinner('Loading assignment data... (for larger courses/assignments, this may take a couple of minutes)', show_time=True):
                     if st.session_state.selected_assignment_id == '<nan>':
                         st.warning('No grade data available for this assignment.')
                     else:

@@ -15,7 +15,6 @@ from bs4 import BeautifulSoup
 from google.cloud import firestore
 from gradescopeapi.api.constants import BASE_URL
 from gradescopeapi.classes.account import Account
-from playwright.sync_api import sync_playwright, BrowserContext
 
 PROFILE_ROOT = Path("gradescope_profiles")
 PROFILE_ROOT.mkdir(exist_ok=True)
@@ -68,13 +67,6 @@ def register_token(token: str) -> None:
 def profile_dir_for_token(token: str) -> Path:
     return PROFILE_ROOT / token
 
-def build_session_from_playwright(context: BrowserContext) -> requests.Session:
-    session = requests.Session()
-    storage = context.storage_state()
-    for cookie in storage["cookies"]:
-        session.cookies.set(cookie["name"], cookie["value"], domain=cookie["domain"], path=cookie["path"])
-    return session
-
 def build_session_from_cookies(cookies: dict[str, Any]) -> requests.Session:
     session = requests.Session()
     for cookie in cookies['cookies']:
@@ -95,32 +87,6 @@ def login_with_cookies(cookies: dict[str, Any]) -> tuple[GSConnectionFromSession
                 break
     return GSConnectionFromSession(session, user), user
 
-def login_with_token(token: str) -> GSConnectionFromSession:
-    profile_dir = profile_dir_for_token(token)
-    with sync_playwright() as p:
-        context = p.chromium.launch_persistent_context(str(profile_dir), headless=False, args=["--no-sandbox", "--disable-dev-shm-usage", "--single-process", "--no-zygote",],)
-        page = context.pages[0] if context.pages else context.new_page()
-        page.goto(f'{BASE_URL}/login')
-        page.wait_for_selector("text=Course Dashboard", timeout=0)
-        user = page.evaluate("bugsnagClient.user")
-        session = build_session_from_playwright(context)
-        context.close()
-    return GSConnectionFromSession(session, user)
-
-def login_temporary() -> tuple[GSConnectionFromSession, str]:
-    temp_profile_dir = tempfile.mkdtemp()
-    shutil.rmtree(temp_profile_dir, ignore_errors=True)
-    os.makedirs(temp_profile_dir, exist_ok=True)
-    with sync_playwright() as p:
-        context = p.chromium.launch_persistent_context(temp_profile_dir, headless=False, args=["--no-sandbox", "--disable-dev-shm-usage", "--single-process", "--no-zygote",],)
-        page = context.pages[0] if context.pages else context.new_page()
-        page.goto(f'{BASE_URL}/login')
-        page.wait_for_selector("text=Course Dashboard", timeout=0)
-        user = page.evaluate("bugsnagClient.user")
-        session = build_session_from_playwright(context)
-        context.close()
-    conn = GSConnectionFromSession(session, user)
-    return conn, temp_profile_dir
 
 def save_profile_for_token(temp_profile_dir: Path, token: str) -> None:
     destination = profile_dir_for_token(token)
