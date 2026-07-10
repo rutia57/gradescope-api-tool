@@ -170,6 +170,8 @@ def get_user_mapping(users: list[Student]) -> dict[str, Student]:
 def filter_submission_zip(zip_bytes: bytes, submission_id_to_student_name_mapping: dict[str, str], assignment_name: str, zip_file_name: str, submission_ids: set[str] | None=None) -> bytes:
     input_zip = io.BytesIO(zip_bytes)
     output_zip = io.BytesIO()
+    if submission_ids and len(submission_ids) == (len(zipfile.ZipFile(input_zip, "r").infolist())-1):
+        return zip_bytes
     try:
         with zipfile.ZipFile(input_zip, "r") as zin:
             with zipfile.ZipFile(output_zip, "w", compression=zipfile.ZIP_DEFLATED,) as zout:
