@@ -25,7 +25,7 @@ import pyarrow as pa  # type: ignore[import-untyped]
 import requests
 import streamlit as st
 from bs4 import BeautifulSoup, Tag
-from cachetools import TTLCache, cached
+from cache import disk_cache_data
 from gradescopeapi.classes.member import Member
 from gradescopeapi.classes.assignments import Assignment
 from gradescope_auth import SAMPLE_PLACEHOLDER_GS_CONN, GSConnectionFromSession as Conn
@@ -166,7 +166,7 @@ def format_assignment_names(assignments_list: list[Assignment]) -> dict[str, str
 def get_user_mapping(users: list[Student]) -> dict[str, Student]:
     return {u.identifier: u for u in users}
 
-# @st.cache_data(ttl=3600)
+@disk_cache_data(ttl=3600)
 def filter_submission_zip(zip_bytes: bytes, submission_id_to_student_name_mapping: dict[str, str], assignment_name: str, zip_file_name: str, submission_ids: set[str] | None=None) -> bytes:
     input_zip = io.BytesIO(zip_bytes)
     output_zip = io.BytesIO()
@@ -217,7 +217,7 @@ def format_name(s: Student | Member) -> tuple[str, str]:
             return f'{" ".join(name_parts[0:-1])}', f'{name_parts[-1]}'
 
 ############################# Get submission files from Gradescope #############################
-# @st.cache_data(ttl=3600, hash_funcs={Question: lambda q: (q.course_id, q.assignment_id, q.question_id)})
+# @disk_cache_data(ttl=3600, hash_funcs={Question: lambda q: (q.course_id, q.assignment_id, q.question_id)})
 def get_submission_original_pdf_bytes(_conn: Conn, course_id: str, assignment_id: str, submission_id: str) -> bytes | None:
     resp = query_endpoint(Endpoint.SUBMISSION, _conn, course_id=course_id, assignment_id=assignment_id, submission_id=submission_id)
     resp_json = resp.json()
@@ -227,7 +227,7 @@ def get_submission_original_pdf_bytes(_conn: Conn, course_id: str, assignment_id
         return pdf_resp.content
     return None
 
-# @st.cache_data(ttl=3600)
+# @disk_cache_data(ttl=3600)
 def get_original_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_id: str, assignment_name: str, submission_ids_and_student_names: list[tuple[str, str]]) -> tuple[bytes, set[str]]:
     if _conn == SAMPLE_PLACEHOLDER_GS_CONN:
         output_zip = io.BytesIO()
@@ -256,7 +256,7 @@ def get_original_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_i
     return output_zip.getvalue(), successfully_downloaded
 
 @sample_report_available
-# @cached(cache=TTLCache(maxsize=100, ttl=3600), key=ignore_some_args)
+@disk_cache_data(ttl=3600, ignore_args={"_conn", "progress_callback"})
 def get_graded_submission_zip_bytes_helper(_conn: Conn, course_id: str, assignment_id: str, progress_callback: Callable[[float], Any] | None=None) -> bytes:
     review_grades_url = Endpoint.REVIEW_GRADES.format(base_url=_conn.account.gradescope_base_url, course_id=course_id, assignment_id=assignment_id)
     review_grades_resp = query_endpoint(Endpoint.REVIEW_GRADES, _conn, course_id=course_id, assignment_id=assignment_id)
@@ -294,14 +294,14 @@ def get_graded_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_id:
 
 ############################### Extract raw data from Gradescope ################################
 @sample_report_available
-@st.cache_data(ttl=3600)
+@disk_cache_data(ttl=3600)
 def get_raw_submissions_metadata(_conn: Conn, course_id: str, assignment_id: str) -> Any:
     # submissions metadata incl. IDs, time submitted, grading progress
     resp = query_endpoint(Endpoint.SUBMISSIONS, _conn, course_id=course_id, assignment_id=assignment_id)
     return resp.json()
 
 @sample_report_available
-@st.cache_data(ttl=3600)
+@disk_cache_data(ttl=3600)
 def get_grades_metadata(_conn: Conn, course_id: str, assignment_id: str, instructors: list[Student], users: list[Student]) -> dict[str, dict[str, Any]]:
     # submissions grades metadata incl. total grade, submitted or not, and timestamp
     resp = query_endpoint(Endpoint.REVIEW_GRADES, _conn, course_id=course_id, assignment_id=assignment_id)
@@ -352,7 +352,7 @@ def get_grades_metadata(_conn: Conn, course_id: str, assignment_id: str, instruc
     return default_instructor_results | results
 
 @sample_report_available
-@st.cache_data(ttl=3600)
+@disk_cache_data(ttl=3600)
 def get_student_info(_conn: Conn, course_id: str) -> tuple[list[Student], int]:
     # student metadata incl. name, ID, email
     members_list = _conn.account.get_course_users(course_id)
@@ -372,7 +372,7 @@ def get_student_info(_conn: Conn, course_id: str) -> tuple[list[Student], int]:
     )
 
 @sample_report_available
-@st.cache_data(ttl=3600)
+@disk_cache_data(ttl=3600)
 def get_instructor_info(_conn: Conn, course_id: str) -> list[Student]:
     # student metadata incl. name, ID, email
     members_list = _conn.account.get_course_users(course_id)
@@ -388,7 +388,7 @@ def get_instructor_info(_conn: Conn, course_id: str) -> list[Student]:
         ) for s in members_list if s.role!='Student'], key=lambda x: (x.last_name,x.first_name))
 
 @sample_report_available
-@st.cache_data(ttl=3600)
+@disk_cache_data(ttl=3600)
 def get_assignment_questions(_conn: Conn, course_id: str, assignment_id: str) -> tuple[dict[str, Question], list[str]]:
     # question info incl. outline, max grade, available rubric items, scoring type, etc.
     resp = query_endpoint(Endpoint.RUBRIC, _conn, course_id=course_id, assignment_id=assignment_id)
@@ -439,7 +439,7 @@ def get_assignment_questions(_conn: Conn, course_id: str, assignment_id: str) ->
         )
     return qs, qs_order
 
-@st.cache_data(ttl=3600)
+@disk_cache_data(ttl=3600)
 def load_single_question_submission_data(_conn: Conn, course_id: str, question_id: str, question_submission_id: str) -> tuple[str, str, str, dict[str, Any]]:
     # helper function (used for parallelization) for scraping data for a single question submission
     resp = query_endpoint(Endpoint.QUESTION_SUBMISSION, _conn, course_id=course_id, question_id=question_id, question_submission_id=question_submission_id)
@@ -451,7 +451,7 @@ def load_single_question_submission_data(_conn: Conn, course_id: str, question_i
     return assignment_submission_id, question_id, question_submission_id, data
 
 @sample_report_available
-@st.cache_data(ttl=3600, hash_funcs={Question: lambda q: (q.course_id, q.assignment_id, q.question_id)})
+@disk_cache_data(ttl=3600, hash_funcs={Question: lambda q: (q.course_id, q.assignment_id, q.question_id)})
 def get_grader_by_question_submission(_conn: Conn, course_id: str, questions: dict[str, Question]) -> dict[str, dict[str, str]]:
     # get (most recent) grader for each question submission (one per question per student)
     grader_by_question_submission: dict[str, dict[str, str]] = {}
@@ -475,7 +475,7 @@ def get_grader_by_question_submission(_conn: Conn, course_id: str, questions: di
     return grader_by_question_submission
 
 @sample_report_available
-@st.cache_data(ttl=3600, hash_funcs={Question: lambda q: (q.course_id, q.assignment_id, q.question_id)})
+@disk_cache_data(ttl=3600, hash_funcs={Question: lambda q: (q.course_id, q.assignment_id, q.question_id)})
 def get_question_to_question_submissions(_conn: Conn, course_id: str, questions: dict[str, Question]) -> dict[str, list[str]]:
     question_to_submissions = defaultdict(list)
     for question_id in questions:
@@ -490,7 +490,7 @@ def get_question_to_question_submissions(_conn: Conn, course_id: str, questions:
     return question_to_submissions
 
 @sample_report_available
-@st.cache_data(ttl=3600, hash_funcs={Question: lambda q: (q.course_id, q.assignment_id, q.question_id)})
+@disk_cache_data(ttl=3600, hash_funcs={Question: lambda q: (q.course_id, q.assignment_id, q.question_id)})
 def get_raw_data_by_question_submission(_conn: Conn, course_id: str, students: list[Student], questions: dict[str, Question], question_to_submissions: dict[str, list[str]], student_to_assignment_submissions: dict[str, str | None]) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]], dict[str, dict[str, str]]]:
     # given question metadata and mapping of IDs, extracts all grade and comment info
     assignment_submission_to_question_submissions: dict[str, dict[str, str]] = {s: {} for s in set(student_to_assignment_submissions.values()) if s is not None}
