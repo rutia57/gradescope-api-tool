@@ -229,7 +229,7 @@ def get_submission_original_pdf_bytes(_conn: Conn, course_id: str, assignment_id
     return None
 
 @disk_cache_data(ttl=3600)
-def get_original_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_id: str, assignment_name: str, submission_ids_and_student_names: list[tuple[str, str]]) -> tuple[bytes, int, set[str]]:
+def get_original_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_id: str, assignment_name: str, submission_ids_and_student_names: list[tuple[str, str]]) -> tuple[str, int, set[str]]:
     if _conn == SAMPLE_PLACEHOLDER_GS_CONN:
         output_zip = io.BytesIO()
         with open("sample_reports_data/get_original_submissions_zip_bytes.pkl", "rb") as f:
@@ -243,7 +243,12 @@ def get_original_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_i
                         if submission_id in (s[0] for s in submission_ids_and_student_names):
                             zout.writestr(filename, zin.read(filename))
         output_zip.seek(0)
-        return output_zip.getvalue(), {s[1] for s in submission_ids_and_student_names}
+        bytes = output_zip.getvalue()
+        successfully_downloaded = {s[1] for s in submission_ids_and_student_names}
+        os.makedirs('large_data/', exist_ok=True)
+        with open('large_data/get_original_submissions_zip_bytes', 'wb') as f:
+            f.write(bytes)
+        return 'large_data/get_original_submissions_zip_bytes', len(bytes), successfully_downloaded
     output_zip = io.BytesIO()
     successfully_downloaded = set()
     for submission_id, student_name in submission_ids_and_student_names:
@@ -255,7 +260,7 @@ def get_original_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_i
                 successfully_downloaded.add(student_name)
     output_zip.seek(0)
     bytes = output_zip.getvalue()
-    os.make_dirs('large_data/', exist_ok=True)
+    os.makedirs('large_data/', exist_ok=True)
     with open('large_data/get_original_submissions_zip_bytes', 'wb') as f:
         f.write(bytes)
     return 'large_data/get_original_submissions_zip_bytes', len(bytes), successfully_downloaded
@@ -295,10 +300,10 @@ def get_graded_submission_zip_bytes_helper(_conn: Conn, course_id: str, assignme
             time.sleep(1)
     return b''
 
-def get_graded_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_id: str, submission_id_to_student_name_mapping: dict[str, str], assignment_name: str, zip_file_name: str, submission_ids: set[str] | None =None, _progress_callback: Callable[[float], Any] | None =None) -> tuple[bytes, int]:
+def get_graded_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_id: str, submission_id_to_student_name_mapping: dict[str, str], assignment_name: str, zip_file_name: str, submission_ids: set[str] | None =None, _progress_callback: Callable[[float], Any] | None =None) -> tuple[str, int]:
     zip_bytes = get_graded_submission_zip_bytes_helper(_conn, course_id, assignment_id, _progress_callback)
     bytes = filter_submission_zip(zip_bytes, submission_id_to_student_name_mapping, assignment_name, zip_file_name, submission_ids)
-    os.make_dirs('large_data/', exist_ok=True)
+    os.makedirs('large_data/', exist_ok=True)
     with open('large_data/get_graded_submissions_zip_bytes', 'wb') as f:
         f.write(bytes)
     return 'large_data/get_graded_submissions_zip_bytes', len(bytes)

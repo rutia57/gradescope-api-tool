@@ -68,9 +68,9 @@ def disk_cache_data(
             result = _cache.get(key, default=None)
             if result is not None:
                 return cast(R, result)
-            result = func(*args, **kwargs)
-            _cache.set(key,result,expire=ttl)
-            return cast(R, result)
+            result2 = func(*args, **kwargs)
+            _cache.set(key,result2,expire=ttl)
+            return result2
         def clear() -> None:
             _cache.clear()
         wrapper.clear = clear  # type: ignore[attr-defined]

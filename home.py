@@ -483,7 +483,7 @@ with container:
                                         f'**Download original submissions for selected students ({len(successfully_downloaded_original_submission)}) (.zip containing .pdf files)**',
                                         original_submissions_bytes_path,
                                         file_name=f'{assignment.name.replace(" ","")}_original_submissions_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
-                                        on_click=lambda: increment_button_count('download_original_submissions', len(original_submissions_bytes_len)),
+                                        on_click=lambda: increment_button_count('download_original_submissions', original_submissions_bytes_len),
                                     )
 
                         except NotImplementedError as e:
