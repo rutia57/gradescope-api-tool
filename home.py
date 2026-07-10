@@ -477,6 +477,8 @@ with container:
         """<style>li[role="option"], li[role="option"] * {font-family: monospace !important;}
         div[data-testid="stDownloadButton"] button {background-color: #e8fbff; color: black; border: 1px solid #93c5fd;}
         div[data-testid="stDownloadButton"] button:hover {background-color: #bfdbfe;}
+        div[data-testid="stLinkButton"] button {background-color: #e8fbff; color: black; border: 1px solid #93c5fd;}
+        div[data-testid="stLinkButton"] button:hover {background-color: #bfdbfe;}
         [data-baseweb="tag"] {background-color: #dbeafe !important; color: #1e3a8a !important; border: 1px solid #93c5fd !important; max-width: none !important;}
         [data-baseweb="tag"] span {color: #1e3a8a !important; max-width: none !important; overflow: visible !important; text-overflow: unset !important;}</style>""",
         unsafe_allow_html=True
