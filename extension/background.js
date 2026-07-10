@@ -67,7 +67,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     // LAUNCH
     // -------------------------
     if (msg.type === "launch") {
-<<<<<<< Updated upstream
         chrome.cookies.getAll({
             domain: "www.gradescope.com"
         }, async (cookies) => {
@@ -77,25 +76,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 cookies
             };
             const bytes = new TextEncoder().encode(JSON.stringify(data));
-=======
-        chrome.cookies.getAll({ domain: "www.gradescope.com" }, (cookies) => {
-            const compact = cookies.map(c => [c.name, c.value]);
-            const json = JSON.stringify(compact);
-            // const compressed = pako.deflate(json);
-            // const session = btoa(String.fromCharCode(...compressed));
-            // const session = encodeURIComponent(json);
-
-            const bytes = new TextEncoder().encode(json);
-            let binary = "";
-            for (const b of bytes) binary += String.fromCharCode(b);
-
-            const session = btoa(binary)
-                .replace(/\+/g, "-")
-                .replace(/\//g, "_")
-                .replace(/=+$/, ""); // remove padding
-
-
->>>>>>> Stashed changes
             let binary = "";
             for (const b of bytes) binary += String.fromCharCode(b);
             const session = btoa(binary);
@@ -109,14 +89,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             });
 
             chrome.tabs.create({
-<<<<<<< Updated upstream
                 url: "https://gradescope-api-tool.streamlit.app/?session_from_ext=b&session_from_ext_id=" + id
                     //  encodeURIComponent(session)
-=======
-                url:
-                    "https://gradescope-api-tool.streamlit.app/?session_from_ext=" +
-                    encodeURIComponent(session)
->>>>>>> Stashed changes
             });
         });
     }

@@ -4,7 +4,6 @@ import datetime
 import html
 import io
 import json
-import os
 import pickle
 import re
 import time
@@ -26,17 +25,14 @@ import pyarrow as pa  # type: ignore[import-untyped]
 import requests
 import streamlit as st
 from bs4 import BeautifulSoup, Tag
-from cache import disk_cache_data
+from cachetools import TTLCache, cached
 from gradescopeapi.classes.member import Member
 from gradescopeapi.classes.assignments import Assignment
 from gradescope_auth import SAMPLE_PLACEHOLDER_GS_CONN, GSConnectionFromSession as Conn
 from st_aggrid import GridOptionsBuilder, JsCode  # type: ignore[import-untyped]
 
-os.makedirs('large_data/', exist_ok=True)
 
 BULLETS = ['•', '◦', '▪']
-
-MAX_FILESIZE = 50 * 1024 * 1024    # 50 MB
 
 @dataclass
 class RubricItem:
@@ -170,78 +166,38 @@ def format_assignment_names(assignments_list: list[Assignment]) -> dict[str, str
 def get_user_mapping(users: list[Student]) -> dict[str, Student]:
     return {u.identifier: u for u in users}
 
-@disk_cache_data(ttl=3600)
-def filter_and_rename_submission_zip(zip_bytes: bytes, output_prefix: str, submission_id_to_student_name_mapping: dict[str, str], assignment_name: str, zip_file_name: str, submission_ids: set[str] | None=None) -> tuple[list[str], list[int], int]:
+@st.cache_data(ttl=3600)
+def filter_submission_zip(zip_bytes: bytes, submission_id_to_student_name_mapping: dict[str, str], assignment_name: str, zip_file_name: str, submission_ids: set[str] | None=None) -> bytes:
     input_zip = io.BytesIO(zip_bytes)
-    total_bytes = 0
-    output_paths: list[str] = []
-    output_file_counts: list[int] = []
-    part = 0
-    current_size = 0
-    current_file_count = 0
-    outfile = None
-    zout = None
-
-    def open_new_zip() -> None:
-        nonlocal outfile, zout, part, current_size, current_file_count
-        path = f"{output_prefix}_part{part}.bin"
-        output_paths.append(path)
-        outfile = open(path, "wb")
-        zout = zipfile.ZipFile(outfile, "w", compression=zipfile.ZIP_DEFLATED)
-        current_size = 0
-        current_file_count = 0
-        part += 1
-
-    def close_zip() -> None:
-        nonlocal outfile, zout, current_size, current_file_count, total_bytes
-        assert outfile
-        if zout is not None:
-            zout.close()
-            outfile.close()
-            size = os.path.getsize(output_paths[-1])
-            current_size = size
-            total_bytes += size
-            output_file_counts.append(current_file_count)
-
+    output_zip = io.BytesIO()
+    if submission_ids and len(submission_ids) == (len(zipfile.ZipFile(input_zip, "r").infolist())-1):
+        return zip_bytes
     try:
         with zipfile.ZipFile(input_zip, "r") as zin:
-            open_new_zip()
-            for info in zin.infolist():
-                zip_file_path = f"{zip_file_name}_part{part:02d}"
-                filename = info.filename
-                if filename.endswith("submission_metadata.yml"):
-                    arcname = f"{zip_file_path}/{filename.split('/')[-1]}"
-                else:
+            with zipfile.ZipFile(output_zip, "w", compression=zipfile.ZIP_DEFLATED,) as zout:
+                for info in zin.infolist():
+                    filename = info.filename
+                    if filename.endswith("submission_metadata.yml"):
+                        zout.writestr(f"{zip_file_name}/{filename.split('/')[-1]}", zin.read(filename))
+                        continue
                     basename = filename.rsplit("/", 1)[-1]
                     if submission_ids:
-                        matches = [sid for sid in submission_ids if sid.lower() in basename.lower()]
-                        if not matches:
-                            continue
-                        submission_id = matches[0]
-                        student_name = submission_id_to_student_name_mapping[submission_id]
-                        arcname = f"{zip_file_path}/{assignment_name}_{student_name}_{submission_id}_graded_submission.pdf"
+                        if any(submission_id.lower() in basename.lower() for submission_id in submission_ids):
+                            submission_id = [submission_id for submission_id in submission_ids if (submission_id.lower() in basename.lower())][0]
+                            student_name = submission_id_to_student_name_mapping[submission_id]
+                            zout.writestr(f"{zip_file_name}/{assignment_name}_{student_name}_{submission_id}_graded_submission.pdf", zin.read(filename))
                     else:
-                        submission_id = basename.split(".")[0]
-
+                        submission_id = filename.split('/')[-1].split('.')[0]
                         if submission_id in submission_id_to_student_name_mapping:
                             student_name = submission_id_to_student_name_mapping[submission_id]
-                            arcname = f"{zip_file_path}/{assignment_name}_{student_name}_{submission_id}_graded_submission.pdf"
+                            zout.writestr(f"{zip_file_name}/{assignment_name}_{student_name}_{submission_id}_graded_submission.pdf", zin.read(filename))
                         else:
-                            arcname = f"{zip_file_path}/{basename}"
-                data = zin.read(filename)
-                if current_size and (current_size + len(data) > MAX_FILESIZE):
-                    close_zip()
-                    open_new_zip()
-                assert zout
-                zout.writestr(arcname, data)
-                current_file_count += 1
-                current_size += len(data)
-            close_zip()
-        return output_paths, output_file_counts, total_bytes
+                            zout.writestr(f"{zip_file_name}/{filename.split('/')[-1]}", zin.read(filename))
+        return output_zip.getvalue()
     except Exception:
         print(zip_bytes)
         traceback.print_exc()
-        return [], [], 0
+        return b''
 
 def ignore_some_args(conn: Any, course_id: str, assignment_id: str, progress_callback: Any) -> int:
     return hash((course_id, assignment_id))
@@ -261,7 +217,7 @@ def format_name(s: Student | Member) -> tuple[str, str]:
             return f'{" ".join(name_parts[0:-1])}', f'{name_parts[-1]}'
 
 ############################# Get submission files from Gradescope #############################
-@disk_cache_data(ttl=3600, hash_funcs={Question: lambda q: (q.course_id, q.assignment_id, q.question_id)})
+@st.cache_data(ttl=3600, hash_funcs={Question: lambda q: (q.course_id, q.assignment_id, q.question_id)})
 def get_submission_original_pdf_bytes(_conn: Conn, course_id: str, assignment_id: str, submission_id: str) -> bytes | None:
     resp = query_endpoint(Endpoint.SUBMISSION, _conn, course_id=course_id, assignment_id=assignment_id, submission_id=submission_id)
     resp_json = resp.json()
@@ -271,8 +227,8 @@ def get_submission_original_pdf_bytes(_conn: Conn, course_id: str, assignment_id
         return pdf_resp.content
     return None
 
-@disk_cache_data(ttl=3600)
-def get_original_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_id: str, assignment_name: str, submission_ids_and_student_names: list[tuple[str, str]]) -> tuple[str, int, set[str]]:
+@st.cache_data(ttl=3600)
+def get_original_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_id: str, assignment_name: str, submission_ids_and_student_names: list[tuple[str, str]]) -> tuple[bytes, set[str]]:
     if _conn == SAMPLE_PLACEHOLDER_GS_CONN:
         output_zip = io.BytesIO()
         with open("sample_reports_data/get_original_submissions_zip_bytes.pkl", "rb") as f:
@@ -286,12 +242,7 @@ def get_original_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_i
                         if submission_id in (s[0] for s in submission_ids_and_student_names):
                             zout.writestr(filename, zin.read(filename))
         output_zip.seek(0)
-        bytes = output_zip.getvalue()
-        successfully_downloaded = {s[1] for s in submission_ids_and_student_names}
-        os.makedirs('large_data/', exist_ok=True)
-        with open('large_data/get_original_submissions_zip_bytes', 'wb') as f:
-            f.write(bytes)
-        return 'large_data/get_original_submissions_zip_bytes', len(bytes), successfully_downloaded
+        return output_zip.getvalue(), {s[1] for s in submission_ids_and_student_names}
     output_zip = io.BytesIO()
     successfully_downloaded = set()
     for submission_id, student_name in submission_ids_and_student_names:
@@ -300,20 +251,12 @@ def get_original_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_i
             with zipfile.ZipFile(output_zip, "a", compression=zipfile.ZIP_DEFLATED) as zout:
                 filename = f'{assignment_name}_{student_name}_{submission_id}_original_submission.pdf'
                 zout.writestr(filename, pdf_bytes)
-                del pdf_bytes
                 successfully_downloaded.add(student_name)
     output_zip.seek(0)
-    bytes = output_zip.getvalue()
-    os.makedirs('large_data/', exist_ok=True)
-    with open('large_data/get_original_submissions_zip_bytes.bin', 'wb') as f:
-        f.write(bytes)
-        print(f'writing {len(bytes)} bytes')
-    return 'large_data/get_original_submissions_zip_bytes.bin', len(bytes), successfully_downloaded
-
-
+    return output_zip.getvalue(), successfully_downloaded
 
 @sample_report_available
-@disk_cache_data(ttl=3600, ignore_args={"progress_callback"})
+@cached(cache=TTLCache(maxsize=100, ttl=3600), key=ignore_some_args)
 def get_graded_submission_zip_bytes_helper(_conn: Conn, course_id: str, assignment_id: str, progress_callback: Callable[[float], Any] | None=None) -> bytes:
     review_grades_url = Endpoint.REVIEW_GRADES.format(base_url=_conn.account.gradescope_base_url, course_id=course_id, assignment_id=assignment_id)
     review_grades_resp = query_endpoint(Endpoint.REVIEW_GRADES, _conn, course_id=course_id, assignment_id=assignment_id)
@@ -345,22 +288,20 @@ def get_graded_submission_zip_bytes_helper(_conn: Conn, course_id: str, assignme
             time.sleep(1)
     return b''
 
-def get_graded_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_id: str, submission_id_to_student_name_mapping: dict[str, str], assignment_name: str, zip_file_name: str, submission_ids: set[str] | None =None, _progress_callback: Callable[[float], Any] | None =None) -> tuple[list[str], list[int], int]:
+def get_graded_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_id: str, submission_id_to_student_name_mapping: dict[str, str], assignment_name: str, zip_file_name: str, submission_ids: set[str] | None =None, _progress_callback: Callable[[float], Any] | None =None) -> bytes:
     zip_bytes = get_graded_submission_zip_bytes_helper(_conn, course_id, assignment_id, _progress_callback)
-    output_path = 'large_data/get_graded_submissions_zip_bytes'
-    return filter_and_rename_submission_zip(zip_bytes, output_path, submission_id_to_student_name_mapping, assignment_name, zip_file_name, submission_ids)
-
+    return filter_submission_zip(zip_bytes, submission_id_to_student_name_mapping, assignment_name, zip_file_name, submission_ids)
 
 ############################### Extract raw data from Gradescope ################################
 @sample_report_available
-@disk_cache_data(ttl=3600)
+@st.cache_data(ttl=3600)
 def get_raw_submissions_metadata(_conn: Conn, course_id: str, assignment_id: str) -> Any:
     # submissions metadata incl. IDs, time submitted, grading progress
     resp = query_endpoint(Endpoint.SUBMISSIONS, _conn, course_id=course_id, assignment_id=assignment_id)
     return resp.json()
 
 @sample_report_available
-@disk_cache_data(ttl=3600)
+@st.cache_data(ttl=3600)
 def get_grades_metadata(_conn: Conn, course_id: str, assignment_id: str, instructors: list[Student], users: list[Student]) -> dict[str, dict[str, Any]]:
     # submissions grades metadata incl. total grade, submitted or not, and timestamp
     resp = query_endpoint(Endpoint.REVIEW_GRADES, _conn, course_id=course_id, assignment_id=assignment_id)
@@ -411,7 +352,7 @@ def get_grades_metadata(_conn: Conn, course_id: str, assignment_id: str, instruc
     return default_instructor_results | results
 
 @sample_report_available
-@disk_cache_data(ttl=3600)
+@st.cache_data(ttl=3600)
 def get_student_info(_conn: Conn, course_id: str) -> tuple[list[Student], int]:
     # student metadata incl. name, ID, email
     members_list = _conn.account.get_course_users(course_id)
@@ -431,7 +372,7 @@ def get_student_info(_conn: Conn, course_id: str) -> tuple[list[Student], int]:
     )
 
 @sample_report_available
-@disk_cache_data(ttl=3600)
+@st.cache_data(ttl=3600)
 def get_instructor_info(_conn: Conn, course_id: str) -> list[Student]:
     # student metadata incl. name, ID, email
     members_list = _conn.account.get_course_users(course_id)
@@ -447,7 +388,7 @@ def get_instructor_info(_conn: Conn, course_id: str) -> list[Student]:
         ) for s in members_list if s.role!='Student'], key=lambda x: (x.last_name,x.first_name))
 
 @sample_report_available
-@disk_cache_data(ttl=3600)
+@st.cache_data(ttl=3600)
 def get_assignment_questions(_conn: Conn, course_id: str, assignment_id: str) -> tuple[dict[str, Question], list[str]]:
     # question info incl. outline, max grade, available rubric items, scoring type, etc.
     resp = query_endpoint(Endpoint.RUBRIC, _conn, course_id=course_id, assignment_id=assignment_id)
@@ -498,7 +439,7 @@ def get_assignment_questions(_conn: Conn, course_id: str, assignment_id: str) ->
         )
     return qs, qs_order
 
-@disk_cache_data(ttl=3600)
+@st.cache_data(ttl=3600)
 def load_single_question_submission_data(_conn: Conn, course_id: str, question_id: str, question_submission_id: str) -> tuple[str, str, str, dict[str, Any]]:
     # helper function (used for parallelization) for scraping data for a single question submission
     resp = query_endpoint(Endpoint.QUESTION_SUBMISSION, _conn, course_id=course_id, question_id=question_id, question_submission_id=question_submission_id)
@@ -510,7 +451,7 @@ def load_single_question_submission_data(_conn: Conn, course_id: str, question_i
     return assignment_submission_id, question_id, question_submission_id, data
 
 @sample_report_available
-@disk_cache_data(ttl=3600, hash_funcs={Question: lambda q: (q.course_id, q.assignment_id, q.question_id)})
+@st.cache_data(ttl=3600, hash_funcs={Question: lambda q: (q.course_id, q.assignment_id, q.question_id)})
 def get_grader_by_question_submission(_conn: Conn, course_id: str, questions: dict[str, Question]) -> dict[str, dict[str, str]]:
     # get (most recent) grader for each question submission (one per question per student)
     grader_by_question_submission: dict[str, dict[str, str]] = {}
@@ -534,7 +475,7 @@ def get_grader_by_question_submission(_conn: Conn, course_id: str, questions: di
     return grader_by_question_submission
 
 @sample_report_available
-@disk_cache_data(ttl=3600, hash_funcs={Question: lambda q: (q.course_id, q.assignment_id, q.question_id)})
+@st.cache_data(ttl=3600, hash_funcs={Question: lambda q: (q.course_id, q.assignment_id, q.question_id)})
 def get_question_to_question_submissions(_conn: Conn, course_id: str, questions: dict[str, Question]) -> dict[str, list[str]]:
     question_to_submissions = defaultdict(list)
     for question_id in questions:
@@ -549,7 +490,7 @@ def get_question_to_question_submissions(_conn: Conn, course_id: str, questions:
     return question_to_submissions
 
 @sample_report_available
-@disk_cache_data(ttl=3600, hash_funcs={Question: lambda q: (q.course_id, q.assignment_id, q.question_id)})
+@st.cache_data(ttl=3600, hash_funcs={Question: lambda q: (q.course_id, q.assignment_id, q.question_id)})
 def get_raw_data_by_question_submission(_conn: Conn, course_id: str, students: list[Student], questions: dict[str, Question], question_to_submissions: dict[str, list[str]], student_to_assignment_submissions: dict[str, str | None]) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]], dict[str, dict[str, str]]]:
     # given question metadata and mapping of IDs, extracts all grade and comment info
     assignment_submission_to_question_submissions: dict[str, dict[str, str]] = {s: {} for s in set(student_to_assignment_submissions.values()) if s is not None}
