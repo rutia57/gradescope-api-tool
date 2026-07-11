@@ -118,7 +118,7 @@ with error_logged_section(firestore_db=st.session_state.firestore_db, name="Show
 if st.session_state.session_from_ext:
     container = st.container()
 else:
-    container = st.expander("View sample grade reports")
+    container = st.expander("View sample grade reports", on_change=lambda: increment_button_count('click_sample_reports_preview'))
 
 
 with container:

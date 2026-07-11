@@ -47,6 +47,7 @@ def log_stats(firestore_db: firestore.Client, firestore_collection_name: str) ->
             "download_original_submissions",
             "download_graded_submissions",
             "download_assignment_outline",
+            "click_sample_reports_preview",
         ]
     }
     save_new_doc_to_firestore(
