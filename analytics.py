@@ -71,15 +71,13 @@ def log_error(
             st.session_state.logged_errors_firestore = set()
         st.session_state.logged_errors_firestore.add(key)
 
-        firestore_db.collection("prod-errors").document(str(uuid.uuid4())).set(
-            {
-                "timestamp": datetime.datetime.now(datetime.timezone.utc),
-                "error": str(error),
-                "traceback": traceback.format_exc(),
-                "context": context,
-                "state_hash": state_hash,
-            }
-        )
+        firestore_db.collection("prod-errors").document(str(uuid.uuid4())).set({
+            "timestamp": datetime.datetime.now(datetime.timezone.utc),
+            "error": str(error),
+            "traceback": traceback.format_exc(),
+            "context": context,
+            "state_hash": state_hash,
+        })
     except Exception:
         # Never let logging break the app
         pass
