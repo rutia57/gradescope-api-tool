@@ -7,6 +7,7 @@ from typing import Any, Generator
 import streamlit as st
 from google.cloud import firestore
 
+
 def stringify_keys(obj: Any) -> Any:
     if isinstance(obj, dict):
         return {str(k): stringify_keys(v) for k, v in obj.items()}
@@ -15,7 +16,12 @@ def stringify_keys(obj: Any) -> Any:
     return obj
 
 
-def save_new_doc_to_firestore(data: dict[str, Any], doc_name: str, firestore_db: firestore.Client, collection_name: str) -> None:
+def save_new_doc_to_firestore(
+    data: dict[str, Any],
+    doc_name: str,
+    firestore_db: firestore.Client,
+    collection_name: str,
+) -> None:
     col = firestore_db.collection(collection_name)
     doc = col.document(doc_name)
     doc.set(data)
@@ -51,7 +57,12 @@ def log_stats(firestore_db: firestore.Client, firestore_collection_name: str) ->
     )
 
 
-def log_error(firestore_db: firestore.Client, error: Exception | str, context: str | None = None, state_hash: str | None = None) -> None:
+def log_error(
+    firestore_db: firestore.Client,
+    error: Exception | str,
+    context: str | None = None,
+    state_hash: str | None = None,
+) -> None:
     try:
         key = f"{context}:{error}:{traceback.format_exc()}"
         if key in st.session_state.get("logged_errors_firestore", set()):
@@ -60,23 +71,32 @@ def log_error(firestore_db: firestore.Client, error: Exception | str, context: s
             st.session_state.logged_errors_firestore = set()
         st.session_state.logged_errors_firestore.add(key)
 
-        firestore_db.collection("prod-errors").document(str(uuid.uuid4())).set({
-            "timestamp": datetime.datetime.now(datetime.timezone.utc),
-            "error": str(error),
-            "traceback": traceback.format_exc(),
-            "context": context,
-            "state_hash": state_hash,
-        })
+        firestore_db.collection("prod-errors").document(str(uuid.uuid4())).set(
+            {
+                "timestamp": datetime.datetime.now(datetime.timezone.utc),
+                "error": str(error),
+                "traceback": traceback.format_exc(),
+                "context": context,
+                "state_hash": state_hash,
+            }
+        )
     except Exception:
         # Never let logging break the app
         pass
 
 
 @contextmanager
-def error_logged_section(firestore_db: firestore.Client, name: str) -> Generator[None, None, None]:
+def error_logged_section(
+    firestore_db: firestore.Client, name: str
+) -> Generator[None, None, None]:
     try:
         yield
     except Exception as e:
-        log_error(firestore_db=firestore_db, error=e, context=name, state_hash=st.session_state.get("state_hash", ""))
+        log_error(
+            firestore_db=firestore_db,
+            error=e,
+            context=name,
+            state_hash=st.session_state.get("state_hash", ""),
+        )
         st.error(f"{name} failed: {e}")
         traceback.print_exc()

@@ -7,6 +7,7 @@ ast_serialize==0.6.0
 asttokens==3.0.1
 attrs==26.1.0
 beautifulsoup4==4.15.0
+black==26.5.1
 blinker==1.9.0
 brotlicffi==1.2.0.0
 cachetools==6.2.2
@@ -64,6 +65,7 @@ pexpect==4.9.0
 pillow==12.2.0
 pip==26.1.1
 platformdirs==4.10.0
+playwright==1.61.0
 pluggy==1.6.0
 prompt_toolkit==3.0.52
 proto-plus==1.28.0
@@ -85,11 +87,13 @@ python-dateutil==2.9.0.post0
 python-decouple==3.8
 python-dotenv==1.2.2
 python-multipart==0.0.29
+pytokens==0.4.1
 pyzmq==27.1.0
 referencing==0.37.0
 requests==2.34.2
 requests-toolbelt==1.0.0
 rpds-py==0.28.0
+ruff==0.15.21
 setuptools==82.0.1
 six==1.17.0
 smmap==5.0.2
