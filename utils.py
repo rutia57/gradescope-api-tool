@@ -36,7 +36,8 @@ from st_aggrid import GridOptionsBuilder, JsCode  # type: ignore[import-untyped]
 
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 
-BULLETS = ['•', '◦', '▪']
+BULLETS = ["•", "◦", "▪"]
+
 
 @dataclass
 class RubricItem:
@@ -47,13 +48,14 @@ class RubricItem:
     rubric_group_id: str | None
     rubric_group_description: str | None
 
+
 @dataclass
 class Question:
     course_id: str
     assignment_id: str
     question_id: str
     title: str
-    scoring_type: Literal['negative', 'positive']
+    scoring_type: Literal["negative", "positive"]
     parent: Question | None
     children: list[Question]
     max_grade: float
@@ -62,10 +64,15 @@ class Question:
     def __eq__(self: Question, other: object) -> bool:
         if not isinstance(other, Question):
             return NotImplemented
-        return self.course_id == other.course_id and self.assignment_id == other.assignment_id and self.question_id == other.question_id
+        return (
+            self.course_id == other.course_id
+            and self.assignment_id == other.assignment_id
+            and self.question_id == other.question_id
+        )
 
     def __hash__(self: Question) -> int:
-        return hash((self.course_id,self.assignment_id,self.question_id))
+        return hash((self.course_id, self.assignment_id, self.question_id))
+
 
 @dataclass
 class Student:
@@ -75,9 +82,11 @@ class Student:
     student_id: str
     user_id: str | None
     role: str
+
     @property
     def identifier(self: Student) -> str:
         return self.user_id or self.email_address
+
 
 @dataclass
 class RawCommentData:
@@ -89,6 +98,7 @@ class RawCommentData:
     child_points: float | None
     linked: bool
 
+
 @dataclass
 class CommentNode:
     id: str
@@ -96,6 +106,7 @@ class CommentNode:
     points: float | None
     linked: bool = False
     children: dict[str, "CommentNode"] = field(default_factory=dict)
+
 
 @dataclass
 class GradeInfo:
@@ -108,7 +119,9 @@ class GradeInfo:
     parent_item_id: str
     parent_item_title: str
 
+
 F = TypeVar("F", bound=Callable[..., Any])
+
 
 def sample_report_available(func: F) -> F:
     @wraps(func)
@@ -118,7 +131,9 @@ def sample_report_available(func: F) -> F:
         path = Path("sample_reports_data") / f"{func.__name__}.pkl"
         with open(path, "rb") as f:
             return pickle.load(f)
-    return wrapper # type: ignore
+
+    return wrapper  # type: ignore
+
 
 @dataclass
 class PlaceholderAssignment:
@@ -148,9 +163,10 @@ def query_endpoint(endpoint: Endpoint, conn: Conn, **path_params: str) -> reques
     resp.raise_for_status()
     return resp
 
+
 ############################### Format info for Streamlit ######################################
 def format_course_names(courses_dict: dict[str, dict[str, Any]]) -> dict[str, str]:
-    course_roles = ['instructor', 'student']
+    course_roles = ["instructor", "student"]
     max_course_id_length = max(set.union(*[{len(k) for k in courses_dict[role].keys()} for role in course_roles]))
     max_course_name_length = max(set.union(*[{len(v.name) for v in courses_dict[role].values()} for role in course_roles]))
     max_course_full_name_length = max(set.union(*[{len(v.full_name) for v in courses_dict[role].values()} for role in course_roles]))
@@ -170,8 +186,15 @@ def format_assignment_names(assignments_list: list[Assignment]) -> dict[str, str
 def get_user_mapping(users: list[Student]) -> dict[str, Student]:
     return {u.identifier: u for u in users}
 
+
 @st.cache_data(ttl=3600)
-def filter_submission_zip(zip_bytes: bytes, submission_id_to_student_name_mapping: dict[str, str], assignment_name: str, zip_file_name: str, submission_ids: set[str] | None=None) -> bytes:
+def filter_submission_zip(
+    zip_bytes: bytes,
+    submission_id_to_student_name_mapping: dict[str, str],
+    assignment_name: str,
+    zip_file_name: str,
+    submission_ids: set[str] | None = None,
+) -> bytes:
     input_zip = io.BytesIO(zip_bytes)
     output_zip = io.BytesIO()
     if submission_ids and len(submission_ids) == (len(zipfile.ZipFile(input_zip, "r").infolist())-1):
@@ -201,10 +224,8 @@ def filter_submission_zip(zip_bytes: bytes, submission_id_to_student_name_mappin
     except Exception:
         print(zip_bytes)
         traceback.print_exc()
-        return b''
+        return b""
 
-def ignore_some_args(conn: Any, course_id: str, assignment_id: str, progress_callback: Any) -> int:
-    return hash((course_id, assignment_id))
 
 def format_name(s: Student | Member) -> tuple[str, str]:
     if isinstance(s, Student):
@@ -212,24 +233,32 @@ def format_name(s: Student | Member) -> tuple[str, str]:
     else:
         if s.first_name and s.last_name:
             return s.first_name, s.last_name
-        name_parts = s.full_name.split(' ')
+        name_parts = s.full_name.split(" ")
         if len(name_parts) <= 1:
-            return '', s.full_name
+            return "", s.full_name
         elif len(name_parts) == 2:
-            return f'{name_parts[0]}', f'{name_parts[1]}'
+            return f"{name_parts[0]}", f"{name_parts[1]}"
         else:
-            return f'{" ".join(name_parts[0:-1])}', f'{name_parts[-1]}'
+            return f'{" ".join(name_parts[0:-1])}', f"{name_parts[-1]}"
+
 
 ############################# Get submission files from Gradescope #############################
 @disk_cache_data(ttl=3600, hash_funcs={Question: lambda q: (q.course_id, q.assignment_id, q.question_id)})
 def get_submission_original_pdf_bytes(_conn: Conn, course_id: str, assignment_id: str, submission_id: str) -> bytes | None:
-    resp = query_endpoint(Endpoint.SUBMISSION, _conn, course_id=course_id, assignment_id=assignment_id, submission_id=submission_id)
+    resp = query_endpoint(
+        Endpoint.SUBMISSION,
+        _conn,
+        course_id=course_id,
+        assignment_id=assignment_id,
+        submission_id=submission_id,
+    )
     resp_json = resp.json()
-    if 'pdf_attachment' in resp_json and resp_json['pdf_attachment'] is not None:
-        pdf_url = resp_json['pdf_attachment']['url']
+    if "pdf_attachment" in resp_json and resp_json["pdf_attachment"] is not None:
+        pdf_url = resp_json["pdf_attachment"]["url"]
         pdf_resp = requests.get(pdf_url)
         return pdf_resp.content
     return None
+
 
 @disk_cache_data(ttl=3600)
 def get_original_submissions_zip_bytes(
@@ -257,7 +286,11 @@ def get_original_submissions_zip_bytes(
         os.makedirs(f"large_data/{cache_key}", exist_ok=True)
         with open(f"large_data/{cache_key}/sample_original_submissions.bin", "wb") as f:
             f.write(bytes)
-        return [(1, len(submission_ids_and_student_names), len(bytes), f"large_data/{cache_key}/sample_original_submissions.bin")], {s[1] for s in submission_ids_and_student_names}, set()
+        return (
+            [(1, len(submission_ids_and_student_names), len(bytes), f"large_data/{cache_key}/sample_original_submissions.bin")],
+            {s[1] for s in submission_ids_and_student_names},
+            set(),
+        )
     successfully_downloaded: set[str] = set()
     zip_parts: list[tuple[int, int, int, str]] = []
     failed_to_download: set[str] = set()
@@ -303,8 +336,13 @@ def get_original_submissions_zip_bytes(
 
 
 @sample_report_available
-@disk_cache_data(ttl=3600, ignore_args={'progress_callback'})
-def get_graded_submission_zip_bytes_helper(_conn: Conn, course_id: str, assignment_id: str, progress_callback: Callable[[float], Any] | None=None) -> str | bytes:
+@disk_cache_data(ttl=3600, ignore_args={"progress_callback"})
+def get_graded_submission_zip_bytes_helper(
+    _conn: Conn,
+    course_id: str,
+    assignment_id: str,
+    progress_callback: Callable[[float], Any] | None = None,
+) -> str | bytes:
     review_grades_url = Endpoint.REVIEW_GRADES.format(base_url=_conn.account.gradescope_base_url, course_id=course_id, assignment_id=assignment_id)
     review_grades_resp = query_endpoint(Endpoint.REVIEW_GRADES, _conn, course_id=course_id, assignment_id=assignment_id)
     soup = BeautifulSoup(review_grades_resp.text, "html.parser").find("meta", {"name": "csrf-token"})
@@ -337,7 +375,17 @@ def get_graded_submission_zip_bytes_helper(_conn: Conn, course_id: str, assignme
     time.sleep(2)
     return Endpoint.ZIP_FILE.value.format(base_url=_conn.account.gradescope_base_url, course_id=course_id, assignment_id=assignment_id)
 
-def get_graded_submissions_zip_bytes(_conn: Conn, course_id: str, assignment_id: str, submission_id_to_student_name_mapping: dict[str, str], assignment_name: str, zip_file_name: str, submission_ids: set[str] | None =None, _progress_callback: Callable[[float], Any] | None =None) -> str | bytes:
+
+def get_graded_submissions_zip_bytes(
+    _conn: Conn,
+    course_id: str,
+    assignment_id: str,
+    submission_id_to_student_name_mapping: dict[str, str],
+    assignment_name: str,
+    zip_file_name: str,
+    submission_ids: set[str] | None = None,
+    _progress_callback: Callable[[float], Any] | None = None,
+) -> str | bytes:
     # zip_bytes = get_graded_submission_zip_bytes_helper(_conn, course_id, assignment_id, _progress_callback)
     # return filter_submission_zip(zip_bytes, submission_id_to_student_name_mapping, assignment_name, zip_file_name, submission_ids)
     return get_graded_submission_zip_bytes_helper(_conn, course_id, assignment_id, _progress_callback)
@@ -350,9 +398,16 @@ def get_raw_submissions_metadata(_conn: Conn, course_id: str, assignment_id: str
     resp = query_endpoint(Endpoint.SUBMISSIONS, _conn, course_id=course_id, assignment_id=assignment_id)
     return resp.json()
 
+
 @sample_report_available
 @st.cache_data(ttl=3600)
-def get_grades_metadata(_conn: Conn, course_id: str, assignment_id: str, instructors: list[Student], users: list[Student]) -> dict[str, dict[str, Any]]:
+def get_grades_metadata(
+    _conn: Conn,
+    course_id: str,
+    assignment_id: str,
+    instructors: list[Student],
+    users: list[Student],
+) -> dict[str, dict[str, Any]]:
     # submissions grades metadata incl. total grade, submitted or not, and timestamp
     resp = query_endpoint(Endpoint.REVIEW_GRADES, _conn, course_id=course_id, assignment_id=assignment_id)
     soup = BeautifulSoup(resp.text, "html.parser")
@@ -401,6 +456,7 @@ def get_grades_metadata(_conn: Conn, course_id: str, assignment_id: str, instruc
             results[email] = {"submission_id": submission_id, "student_name": student_name, "score": score, "submitted": True, "submitted_at": submitted_at}
     return default_instructor_results | results
 
+
 @sample_report_available
 @st.cache_data(ttl=3600)
 def get_student_info(_conn: Conn, course_id: str) -> tuple[list[Student], int]:
@@ -410,16 +466,13 @@ def get_student_info(_conn: Conn, course_id: str) -> tuple[list[Student], int]:
         raise NotImplementedError("Grade breakdown analysis is currently only implemented for courses for which you are an instructor.")
     max_student_name_len = max([len(format_name(s)[0])+len(format_name(s)[1])+1 for s in members_list if s.role=='Student'])
     return (
-        sorted([Student(
-            s.email,
-            format_name(s)[0],
-            format_name(s)[1],
-            s.sid,
-            s.user_id,
-            'Student',
-        ) for s in members_list if s.role=='Student'], key=lambda x: (x.last_name,x.first_name)),
+        sorted(
+            [Student(s.email, format_name(s)[0], format_name(s)[1], s.sid, s.user_id, 'Student') for s in members_list if s.role=='Student'],
+            key=lambda x: (x.last_name,x.first_name)
+        ),
         max_student_name_len
     )
+
 
 @sample_report_available
 @st.cache_data(ttl=3600)
@@ -428,14 +481,9 @@ def get_instructor_info(_conn: Conn, course_id: str) -> list[Student]:
     members_list = _conn.account.get_course_users(course_id)
     if not members_list:
         raise NotImplementedError("Grade breakdown analysis is currently only implemented for courses for which you are an instructor.")
-    return sorted([Student(
-            s.email,
-            format_name(s)[0],
-            format_name(s)[1],
-            s.sid,
-            s.user_id,
-            'Instructor',
-        ) for s in members_list if s.role!='Student'], key=lambda x: (x.last_name,x.first_name))
+    return sorted([
+        Student(s.email, format_name(s)[0], format_name(s)[1], s.sid, s.user_id, 'Instructor') for s in members_list if s.role!='Student'
+    ], key=lambda x: (x.last_name,x.first_name))
 
 @sample_report_available
 @st.cache_data(ttl=3600)
@@ -446,27 +494,29 @@ def get_assignment_questions(_conn: Conn, course_id: str, assignment_id: str) ->
         raise NotImplementedError("Grade breakdown analysis is currently only implemented for courses for which you are an instructor.")
     soup = BeautifulSoup(resp.text, "html.parser")
     element = soup.find("div", {"data-react-class": "AssignmentRubric"})
-    assert element is not None, "Could not find AssignmentRubric element in the rubric page; Gradescope must've disconnected"
+    assert (
+        element is not None
+    ), "Could not find AssignmentRubric element in the rubric page; Gradescope must've disconnected"
     props = json.loads(str(element["data-react-props"]))
     qs = dict()
     qs_order = []
-    for q in props['questions']:
-        qs_order.append(str(q['id']))
-        qs[str(q['id'])] =  Question(
+    for q in props["questions"]:
+        qs_order.append(str(q["id"]))
+        qs[str(q["id"])] = Question(
             course_id=course_id,
             assignment_id=assignment_id,
-            question_id=str(q['id']),
-            title=q['title'],
+            question_id=str(q["id"]),
+            title=q["title"],
             parent=None,
             children=[],
-            max_grade=float(q['weight']),
+            max_grade=float(q["weight"]),
             rubric_items={},
-            scoring_type=q['scoring_type']
+            scoring_type=q["scoring_type"],
         )
-        if q['children']:
-            for c in q['children']:
-                qs_order.append(str(c['id']))
-                qs[str(c['id'])] = Question(
+        if q["children"]:
+            for c in q["children"]:
+                qs_order.append(str(c["id"]))
+                qs[str(c["id"])] = Question(
                     course_id=course_id,
                     assignment_id=assignment_id,
                     question_id=str(c['id']),
@@ -489,8 +539,11 @@ def get_assignment_questions(_conn: Conn, course_id: str, assignment_id: str) ->
         )
     return qs, qs_order
 
+
 @st.cache_data(ttl=3600)
-def load_single_question_submission_data(_conn: Conn, course_id: str, question_id: str, question_submission_id: str) -> tuple[str, str, str, dict[str, Any]]:
+def load_single_question_submission_data(
+    _conn: Conn, course_id: str, question_id: str, question_submission_id: str
+) -> tuple[str, str, str, dict[str, Any]]:
     # helper function (used for parallelization) for scraping data for a single question submission
     resp = query_endpoint(Endpoint.QUESTION_SUBMISSION, _conn, course_id=course_id, question_id=question_id, question_submission_id=question_submission_id)
     soup = BeautifulSoup(resp.text, "html.parser")
@@ -512,7 +565,7 @@ def get_grader_by_question_submission(_conn: Conn, course_id: str, questions: di
         if not table:
             continue
         grader_by_question_submission[question_id] = {}
-        for row in table.find_all("tr")[1:]:   # skip header
+        for row in table.find_all("tr")[1:]:  # skip header
             cells = row.find_all("td")
             link_a = cells[1].find("a")
             assert link_a is not None, f"Could not find link for question submission in course {course_id}, question {question_id}"
@@ -539,18 +592,34 @@ def get_question_to_question_submissions(_conn: Conn, course_id: str, questions:
             question_to_submissions[question_id].append(submission_id)
     return question_to_submissions
 
+
 @sample_report_available
-@st.cache_data(ttl=3600, hash_funcs={Question: lambda q: (q.course_id, q.assignment_id, q.question_id)})
-def get_raw_data_by_question_submission(_conn: Conn, course_id: str, students: list[Student], questions: dict[str, Question], question_to_submissions: dict[str, list[str]], student_to_assignment_submissions: dict[str, str | None]) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]], dict[str, dict[str, str]]]:
+@st.cache_data(ttl=3600,hash_funcs={Question: lambda q: (q.course_id, q.assignment_id, q.question_id)})
+def get_raw_data_by_question_submission(
+    _conn: Conn,
+    course_id: str,
+    students: list[Student],
+    questions: dict[str, Question],
+    question_to_submissions: dict[str, list[str]],
+    student_to_assignment_submissions: dict[str, str | None],
+) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]], dict[str, dict[str, str]]]:
     # given question metadata and mapping of IDs, extracts all grade and comment info
-    assignment_submission_to_question_submissions: dict[str, dict[str, str]] = {s: {} for s in set(student_to_assignment_submissions.values()) if s is not None}
+    assignment_submission_to_question_submissions: dict[str, dict[str, str]] = {
+        s: {} for s in set(student_to_assignment_submissions.values()) if s is not None
+    }
     question_submission_to_comment_data = {}
 
     futures = []
     with ThreadPoolExecutor(max_workers=16) as executor:
         for question_id in questions:
             for question_submission_id in question_to_submissions[question_id]:
-                futures.append(executor.submit(load_single_question_submission_data, _conn, course_id, question_id, question_submission_id))
+                futures.append(executor.submit(
+                        load_single_question_submission_data,
+                        _conn,
+                        course_id,
+                        question_id,
+                        question_submission_id,
+                    ))
         for future in as_completed(futures):
             assignment_submission_id, question_id, question_submission_id, comment_data = future.result()
             if assignment_submission_id in assignment_submission_to_question_submissions:
@@ -608,6 +677,7 @@ def get_student_to_assignment_submissions(students: list[Student], submission_me
                 student_to_assignment_submissions[matching_grade_info] = str(submission_id)
     return student_to_assignment_submissions
 
+
 def build_tree(rows: list[RawCommentData]) -> list[CommentNode]:
     # helper function to build reduced tree of comments with full info from unstructured parsed partial info data
     def make_id(id_: str | None, description: str | None) -> str:
@@ -625,15 +695,27 @@ def build_tree(rows: list[RawCommentData]) -> list[CommentNode]:
                 node.points = points
             node.linked |= linked
         return nodes[node_id]
+
     has_parent = set()
     for raw_comment_data in rows:
-        parent = get_node(raw_comment_data.item_id, raw_comment_data.description, raw_comment_data.points, raw_comment_data.linked)
+        parent = get_node(
+            raw_comment_data.item_id,
+            raw_comment_data.description,
+            raw_comment_data.points,
+            raw_comment_data.linked,
+        )
         if raw_comment_data.child_description is None:
             continue
-        child = get_node(raw_comment_data.child_id, raw_comment_data.child_description, raw_comment_data.child_points, False)
+        child = get_node(
+            raw_comment_data.child_id,
+            raw_comment_data.child_description,
+            raw_comment_data.child_points,
+            False,
+        )
         parent.children[child.id] = child
         has_parent.add(child.id)
     return [node for node_id, node in nodes.items() if node_id not in has_parent]
+
 
 def format_tree(roots: list[CommentNode]) -> str:
     # format tree of comments & points for a question into a blurb of ordered comments by line
@@ -661,7 +743,16 @@ def format_tree(roots: list[CommentNode]) -> str:
     roots.sort(key=lambda r: not subtree_has_points(r))
     return "\n".join(line for root in roots for line in format_node(root))
 
-def get_grade_breakdowns(students: list[Student], questions: dict[str, Question], comments: dict[str, dict[str, list[RawCommentData]]], total_scores: dict[str, dict[str, float]], student_to_question_to_question_submission: dict[str, dict[str, str]], grader_by_question_submission: dict[str, dict[str, str]], questions_order: list[str]) -> dict[str, list[GradeInfo]]:
+
+def get_grade_breakdowns(
+    students: list[Student],
+    questions: dict[str, Question],
+    comments: dict[str, dict[str, list[RawCommentData]]],
+    total_scores: dict[str, dict[str, float]],
+    student_to_question_to_question_submission: dict[str, dict[str, str]],
+    grader_by_question_submission: dict[str, dict[str, str]],
+    questions_order: list[str],
+) -> dict[str, list[GradeInfo]]:
     # gets list of GradeInfo objects for all questions for each student
     results: dict[str, list[GradeInfo]] = {}
     for student in students:
@@ -698,8 +789,19 @@ def get_grade_breakdowns(students: list[Student], questions: dict[str, Question]
         results[student_id] = sorted(results[student_id], key=lambda g: questions_order.index(g.parent_item_id) if g.parent_item_id in questions_order else len(results[student_id]))
     return results
 
+
 ############################### Format extracted data into reports ###############################
-def get_grade_summary(assignment_title: str, assignment_due_date: str, assignment_max_grade: float, selected_students: list[Student], questions: dict[str, Question], student_mapping: dict[str, Student], grade_breakdowns: dict[str, list[GradeInfo]], grades_metadata: dict[str, dict[str, Any]], student_to_assignment_submissions: dict[str, str | None]) -> pd.DataFrame:
+def get_grade_summary(
+    assignment_title: str,
+    assignment_due_date: str,
+    assignment_max_grade: float,
+    selected_students: list[Student],
+    questions: dict[str, Question],
+    student_mapping: dict[str, Student],
+    grade_breakdowns: dict[str, list[GradeInfo]],
+    grades_metadata: dict[str, dict[str, Any]],
+    student_to_assignment_submissions: dict[str, str | None],
+) -> pd.DataFrame:
     cols = [f"{assignment_title}\nDue {assignment_due_date}\n\nName", "Email", "Submitted", "Submission ID"]
     cols_set = set(cols)
     rows = []
@@ -727,10 +829,19 @@ def get_grade_summary(assignment_title: str, assignment_due_date: str, assignmen
                         cols_set.add(k)
                         cols.append(k)
                 rows.append(row)
-    cols.append('Notes')
+    cols.append("Notes")
     return pd.DataFrame(rows, columns=cols)
 
-def build_feedback_files(assignment_title: str, assignment_max_grade: float, selected_students: list[Student], questions: dict[str, Question], student_mapping: dict[str, Student], grade_breakdowns: dict[str, list[GradeInfo]], grades_metadata: dict[str, dict[str, Any]]) -> dict[str, str]:
+
+def build_feedback_files(
+    assignment_title: str,
+    assignment_max_grade: float,
+    selected_students: list[Student],
+    questions: dict[str, Question],
+    student_mapping: dict[str, Student],
+    grade_breakdowns: dict[str, list[GradeInfo]],
+    grades_metadata: dict[str, dict[str, Any]],
+) -> dict[str, str]:
     feedback_file_strs = {}
     for student_id, grade_breakdown in grade_breakdowns.items():
         student = student_mapping[student_id]
@@ -751,14 +862,21 @@ def build_feedback_files(assignment_title: str, assignment_max_grade: float, sel
                 feedback_file_strs[student.identifier] = feedback
     return feedback_file_strs
 
-def get_assignment_outline_and_stats(questions: dict[str, Question], questions_order: list[str], grade_breakdowns: dict[str, list[GradeInfo]], users_with_grades: list[Student]) -> pd.DataFrame:
+
+def get_assignment_outline_and_stats(
+    questions: dict[str, Question],
+    questions_order: list[str],
+    grade_breakdowns: dict[str, list[GradeInfo]],
+    users_with_grades: list[Student],
+) -> pd.DataFrame:
     def outline(question: Question) -> str:
         path = [question.title]
         p = question.parent
         while p is not None:
             path = [p.title] + path
             p = p.parent
-        return '\n'.join(["--"*i+p for (i,p) in enumerate(path)])
+        return "\n".join(["--" * i + p for (i, p) in enumerate(path)])
+
     def rubric_string(question: Question) -> str:
         if not question.rubric_items:
             return ""
@@ -800,11 +918,13 @@ def get_assignment_outline_and_stats(questions: dict[str, Question], questions_o
                 for item2 in entry["items"]:
                     lines.append(format_item(item2, indent=1))
         return "\n".join(lines)
+
     def stats_string(scores: list[float | None]) -> str:
         scores_non_null: list[float] = [x for x in scores if x is not None]
         if not scores_non_null:
             return ""
         return f"Count: {len(scores_non_null)}\nMean: {mean(scores_non_null):.2f}\nMedian: {median(scores_non_null):.2f}"
+
     def grader_stats_string(grader_scores: dict[str, list[float | None]]) -> str:
         pieces = []
         for grader in sorted(grader_scores):
@@ -842,7 +962,12 @@ def get_assignment_outline_and_stats(questions: dict[str, Question], questions_o
         )
     return pd.DataFrame(rows)
 
-def get_submission_summary(selected_students: list[Student], grades_metadata: dict[str, dict[str, float | None]], downloaded_pdf_students: set[str]) -> pd.DataFrame:
+
+def get_submission_summary(
+    selected_students: list[Student],
+    grades_metadata: dict[str, dict[str, float | None]],
+    downloaded_pdf_students: set[str],
+) -> pd.DataFrame:
     grades = []
     pdfs_available = 0
     for student in selected_students:
@@ -852,8 +977,10 @@ def get_submission_summary(selected_students: list[Student], grades_metadata: di
         if (f"{student.first_name.replace(' ', '_')}_{student.last_name.replace(' ', '_')}") in downloaded_pdf_students:
             pdfs_available += 1
     n = len(selected_students)
+
     def fmt(x: Any) -> Any:
         return f"{x:.2f}" if isinstance(x, float) else x
+
     rows = [
         ("Students selected", n),
         ("Submission PDFs available", f"{pdfs_available} / {n}"),
@@ -863,6 +990,7 @@ def get_submission_summary(selected_students: list[Student], grades_metadata: di
         ("Maximum grade", fmt(max(grades)) if grades else "—"),
     ]
     return pd.DataFrame(rows, columns=["Statistic", "Value"])
+
 
 ############################### Streamlit styling utils ###########################################
 multiline_renderer = JsCode("""
@@ -911,18 +1039,21 @@ function(params) {
 }
 """)
 
+
 def make_aggrid_safe(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
+
     def safe_cell(x: Any) -> Any:
         if pd.isna(x):
             return None
         if isinstance(x, (np.integer, np.floating, np.bool_)):
             return x.item()
         if isinstance(x, (pd.Timestamp, datetime.datetime)):
-            return x.isoformat(sep=' ')
+            return x.isoformat(sep=" ")
         if isinstance(x, (dict, list, tuple, set)):
             return str(x)
         return x
+
     return df.map(safe_cell)
 
 def format_grade_summary_df(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, Any], int, dict[str, dict[str, str]]]:
@@ -946,9 +1077,12 @@ def format_grade_summary_df(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, A
         grade_summary_styled.loc[grade_summary_styled[col].isna(), col] = None
 
     gb = GridOptionsBuilder.from_dataframe(grade_summary_styled)
-    gb.configure_default_column(resizable=True, sortable=True, filter=True,
-                                cellRenderer=multiline_renderer,
-                                wrapText=False,
+    gb.configure_default_column(
+        resizable=True,
+        sortable=True,
+        filter=True,
+        cellRenderer=multiline_renderer,
+        wrapText=False,
         wrapHeaderText=True,
         autoHeaderHeight=True,
     )
@@ -969,7 +1103,7 @@ def format_grade_summary_df(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, A
             width = min(30, max(header_width, cell_width))
         else:
             width = header_width
-        gb.configure_column(col, width=width*8+24)
+        gb.configure_column(col, width=width * 8 + 24)
     grid_options = gb.build()
     grid_options["getRowHeight"] = JsCode("""function(params) {return params.data._rowHeight;}""")
     grid_options["suppressColumnVirtualisation"] = True
@@ -985,6 +1119,7 @@ def format_grade_summary_df(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, A
     custom_css = {".ag-header-cell-label": {"justify-content": "flex-start",}, ".ag-header-cell-text": {"white-space": "pre-line","text-align": "left",}}
     return grade_summary_styled, grid_options, preview_height, custom_css
 
+
 def is_arrow_compatible(df: pd.DataFrame) -> tuple[bool, str | None]:
     try:
         pa.Table.from_pandas(df)
@@ -994,4 +1129,3 @@ def is_arrow_compatible(df: pd.DataFrame) -> tuple[bool, str | None]:
         return True, None
     except Exception:
         return False, traceback.format_exc()
-

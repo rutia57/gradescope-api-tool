@@ -52,12 +52,12 @@ from utils import (
 warnings.filterwarnings("ignore", message=".*cached function.*widget.*")
 
 st.set_page_config(page_title="Gradescope API Tool", page_icon="extension/icon.png")
-st.set_page_config(layout='wide')
+st.set_page_config(layout="wide")
 st.markdown("# 🎓 Gradescope API Tool")
-st.session_state['session_from_ext'] = st.query_params.get("session_from_ext")
+st.session_state["session_from_ext"] = st.query_params.get("session_from_ext")
 
 if st.query_params.get("reset_cache") is not None:
-    with st.spinner('Clearing disk cache...'):
+    with st.spinner("Clearing disk cache..."):
         get_original_submissions_zip_bytes.clear()  # type: ignore
         os.makedirs("large_data", exist_ok=True)
         shutil.rmtree("large_data")
@@ -75,11 +75,16 @@ else:
         else:
             firestore_collection_name_key = "gradescope-api-streamlit-counts-prod"
 
-if 'firestore_db' not in st.session_state:
-    st.session_state.firestore_db = firestore.Client.from_service_account_json(key_file) # type: ignore
+if "firestore_db" not in st.session_state:
+    st.session_state.firestore_db = firestore.Client.from_service_account_json(key_file)  # type: ignore
+
 
 def show_error(message: str, *, context: str | None = None) -> None:
-    log_error(firestore_db=st.session_state.firestore_db, error=message, context=context or "st.error")
+    log_error(
+        firestore_db=st.session_state.firestore_db,
+        error=message,
+        context=context or "st.error",
+    )
     st.error(message)
 
 with error_logged_section(firestore_db=st.session_state.firestore_db, name="Show installation instructions"):
@@ -113,7 +118,7 @@ with error_logged_section(firestore_db=st.session_state.firestore_db, name="Show
 if st.session_state.session_from_ext:
     container = st.container()
 else:
-    container = st.expander('View sample grade reports')
+    container = st.expander("View sample grade reports")
 
 
 with container:
@@ -139,28 +144,27 @@ with container:
             if var not in st.session_state:
                 st.session_state[var] = None
         if st.session_state.session_from_ext:
-            if 'selected_course_name' not in st.session_state:
-                st.session_state['selected_course_name'] = default_course_option
-            if 'selected_assignment_name' not in st.session_state:
-                st.session_state['selected_assignment_name'] = default_assignment_option
+            if "selected_course_name" not in st.session_state:
+                st.session_state["selected_course_name"] = default_course_option
+            if "selected_assignment_name" not in st.session_state:
+                st.session_state["selected_assignment_name"] = default_assignment_option
         else:
-            st.session_state['gs_conn'] = SAMPLE_PLACEHOLDER_GS_CONN
-            if 'selected_course_name' not in st.session_state:
-                st.session_state['selected_course_name'] = 'TEST'
-            if 'selected_assignment_name' not in st.session_state:
-                st.session_state['selected_assignment_name'] = 'Assignment 1'
+            st.session_state["gs_conn"] = SAMPLE_PLACEHOLDER_GS_CONN
+            if "selected_course_name" not in st.session_state:
+                st.session_state["selected_course_name"] = "TEST"
+            if "selected_assignment_name" not in st.session_state:
+                st.session_state["selected_assignment_name"] = "Assignment 1"
 
-
-        if 'button_click_counts' not in st.session_state:
-            st.session_state['button_click_counts'] = defaultdict(lambda: defaultdict(int))
-        if 'session_id' not in st.session_state:
+        if "button_click_counts" not in st.session_state:
+            st.session_state["button_click_counts"] = defaultdict(lambda: defaultdict(int))
+        if "session_id" not in st.session_state:
             st.session_state.session_id = uuid.uuid4()
-        if 'state_hash' not in st.session_state:
+        if "state_hash" not in st.session_state:
             st.session_state.state_hash = hash(
-                f'{st.session_state.gs_conn.name if st.session_state.gs_conn is not None else None}_'
-                f'{st.session_state.gs_conn.email if st.session_state.gs_conn is not None else None}_'
-                f'{st.session_state.selected_assignment_name}_'
-                f'{st.session_state.selected_course_name}_'
+                f"{st.session_state.gs_conn.name if st.session_state.gs_conn is not None else None}_"
+                f"{st.session_state.gs_conn.email if st.session_state.gs_conn is not None else None}_"
+                f"{st.session_state.selected_assignment_name}_"
+                f"{st.session_state.selected_course_name}_"
             )
 
         # session vars used for graded zip download
@@ -169,10 +173,10 @@ with container:
 
         def update_state_hash() -> None:
             st.session_state.state_hash = hash(
-                f'{st.session_state.gs_conn.name if st.session_state.gs_conn is not None else None}_'
-                f'{st.session_state.gs_conn.email if st.session_state.gs_conn is not None else None}_'
-                f'{st.session_state.selected_assignment_name}_'
-                f'{st.session_state.selected_course_name}_'
+                f"{st.session_state.gs_conn.name if st.session_state.gs_conn is not None else None}_"
+                f"{st.session_state.gs_conn.email if st.session_state.gs_conn is not None else None}_"
+                f"{st.session_state.selected_assignment_name}_"
+                f"{st.session_state.selected_course_name}_"
             )
 
         def reset_selected_students() -> None:
@@ -201,9 +205,12 @@ with container:
                 with col7:
                     courses = st.session_state.gs_conn.account.get_courses()
                     course_name_mapping = format_course_names(courses)
-                    selected_course = st.selectbox('Select a course to view assignment data:',
-                                                options=[default_course_option] + list(course_name_mapping.keys()),
-                                                on_change=reset_selected_students)
+                    selected_course = st.selectbox(
+                        "Select a course to view assignment data:",
+                        options=[default_course_option]
+                        + list(course_name_mapping.keys()),
+                        on_change=reset_selected_students,
+                    )
                     st.session_state.selected_course_id = course_name_mapping[selected_course] if selected_course in course_name_mapping else None
                     st.session_state.selected_course_name = selected_course
                 with col8:
@@ -211,9 +218,12 @@ with container:
                         # Load course assignments
                         assignments = st.session_state.gs_conn.account.get_assignments(st.session_state.selected_course_id)
                         assignment_name_mapping = format_assignment_names(assignments)
-                        selected_assignment = st.selectbox('Select an assignment to view grade data:',
-                                                options=[default_assignment_option] + list(assignment_name_mapping.keys()),
-                                                on_change=reset_selected_students)
+                        selected_assignment = st.selectbox(
+                            "Select an assignment to view grade data:",
+                            options=[default_assignment_option]
+                            + list(assignment_name_mapping.keys()),
+                            on_change=reset_selected_students,
+                        )
                         st.session_state.selected_assignment_id = assignment_name_mapping[selected_assignment] if selected_assignment in assignment_name_mapping else None
                         st.session_state.selected_assignment_name = selected_assignment
                     else:
@@ -221,8 +231,10 @@ with container:
                         st.session_state.selected_assignment_name = None
             else:
                 assignments = [placeholder_assignment_object]
-                st.write('Viewing grade info for Assignment 1 for a sample course. \n\n When you open the tool from an authenticated Gradescope session via the extension, '
-                        'you\'ll instead be able to choose a course from your Gradescope courses and an assignment from that course.')
+                st.write(
+                    "Viewing grade info for Assignment 1 for a sample course. \n\n When you open the tool from an authenticated Gradescope session via the extension, "
+                    "you'll instead be able to choose a course from your Gradescope courses and an assignment from that course."
+                )
 
             # Load assignment data
             if st.session_state.selected_assignment_id is not None or st.session_state.session_from_ext is None:
@@ -236,7 +248,7 @@ with container:
                             assignment_id = st.session_state.selected_assignment_id
                             course_id = st.session_state.selected_course_id
 
-                            with st.spinner('Loading assignment & grade data from Gradescope...', show_time=True):
+                            with st.spinner("Loading assignment & grade data from Gradescope...", show_time=True):
                                 students, max_student_name_length = get_student_info(conn, course_id)
                                 instructors = get_instructor_info(conn, course_id)
                                 student_mapping = get_user_mapping(students)
@@ -301,7 +313,7 @@ with container:
                                                 height=preview_height,
                                                 allow_unsafe_jscode=True,
                                                 custom_css=custom_css,
-                                                width='50%',
+                                                width="50%",
                                             )
                                         else:
                                             st.warning('Error loading preview – download .csv file below to see data.')
@@ -387,7 +399,7 @@ with container:
                                 with c2:
                                     progress_placeholder = st.empty()
                                     def progress_cb(n: float) -> None:
-                                        progress_placeholder.progress(min(n,1.0))
+                                        progress_placeholder.progress(min(n, 1.0))
                                         if n <= 1:
                                             success_message_placeholder.empty()
                                             grades_download_button_slot.link_button(
@@ -426,7 +438,7 @@ with container:
                                     st.markdown(assignment_outline_and_stats_df.map(lambda x: x.replace('\n', '<br>') if isinstance(x, str) else x).to_html(escape=False, index=False), unsafe_allow_html=True)
 
                                 download_assignment_outline = st.download_button(
-                                    '**Download assignment outline and question stats (.csv file)**',
+                                    "**Download assignment outline and question stats (.csv file)**",
                                     assignment_outline_and_stats_df.to_csv(index=False),
                                     file_name=f'{assignment.name.replace(" ","")}_assignment_outline_and_question_stats_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.csv',
                                     on_click=lambda: increment_button_count('download_assignment_outline'),
@@ -513,5 +525,5 @@ with container:
         div[data-testid="stLinkButton"] button:hover {background-color: #bfdbfe;}
         [data-baseweb="tag"] {background-color: #dbeafe !important; color: #1e3a8a !important; border: 1px solid #93c5fd !important; max-width: none !important;}
         [data-baseweb="tag"] span {color: #1e3a8a !important; max-width: none !important; overflow: visible !important; text-overflow: unset !important;}</style>""",
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
