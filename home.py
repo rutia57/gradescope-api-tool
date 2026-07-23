@@ -98,7 +98,7 @@ with error_logged_section(firestore_db=st.session_state.firestore_db, name="Show
 
                 <div style="margin-left:20px">
 
-                <p>1) Add this extension to Chrome:
+                <p>1) Add this extension to Chrome (or Brave, Edge, Opera, Vivaldi or any other browser that supports Chrome extensions):
                 <a href="https://chromewebstore.google.com/detail/nhnebenbafkkclppjgmeegokeikljogo?utm_source=item-share-cb">
                 Gradescope API Tool Extension</a>.</p>
 
@@ -500,10 +500,11 @@ with container:
                                         else:
                                             original_submissions_download_part = original_submissions_paths_metadata[0]
                                         with c1:
+                                            filename_suffix = f'_{original_submissions_download_part[0]:02d}_of_{len(original_submissions_paths_metadata):02d}' if len(original_submissions_paths_metadata) > 1 else ''
                                             download_original_submissions = st.download_button(
                                                 f'**Download original submissions for selected students ({original_submissions_download_part[1]}) (.zip containing .pdf files) (part {original_submissions_download_part[0]} of {len(original_submissions_paths_metadata)})**',
                                                 open(original_submissions_download_part[3], 'rb').read(),
-                                                file_name=f'{assignment.name.replace(" ","")}_original_submissions_{original_submissions_download_part[0]}_of_{len(original_submissions_paths_metadata)}_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
+                                                file_name=f'{assignment.name.replace(" ","")}_original_submissions{filename_suffix}_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
                                                 on_click=lambda: increment_button_count('download_original_submissions'),
                                             )
 
