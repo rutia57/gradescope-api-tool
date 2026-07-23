@@ -35,9 +35,6 @@ msg["To"] = EMAIL_TO
 with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
     if args.verbose:
         print("Logging in to Gmail...")
-        print(GMAIL_USERNAME)
-        print(GMAIL_APP_PASSWORD)
-        print(EMAIL_TO)
     server.login(GMAIL_USERNAME, GMAIL_APP_PASSWORD)
 
     if args.verbose:
