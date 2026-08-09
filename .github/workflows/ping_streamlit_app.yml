@@ -31,7 +31,20 @@ jobs:
 
       - name: Run Streamlit health check
         run: |
-          python .github/scripts/check_streamlit.py
+          for attempt in 1 2 3; do
+            echo "=== Streamlit health check attempt $attempt/3 ==="
+            if python .github/scripts/check_streamlit.py; then
+              echo "Health check succeeded on attempt $attempt."
+              exit 0
+            fi
+            echo "Health check failed on attempt $attempt."
+            if [ "$attempt" -lt 3 ]; then
+              echo "Retrying in 10 seconds..."
+              sleep 10
+            fi
+          done
+          echo "Health check failed after 3 attempts."
+          exit 1
 
       - name: Send email on failure
         if: failure()
