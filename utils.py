@@ -35,7 +35,7 @@ from gradescope_auth import SAMPLE_PLACEHOLDER_GS_CONN, GSConnectionFromSession 
 from st_aggrid import GridOptionsBuilder, JsCode  # type: ignore[import-untyped]
 
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
-
+CHUNK_SIZE = 8 * 1024 * 1024  # 8 MB
 BULLETS = ["•", "◦", "▪"]
 
 
@@ -186,46 +186,82 @@ def format_assignment_names(assignments_list: list[Assignment]) -> dict[str, str
 def get_user_mapping(users: list[Student]) -> dict[str, Student]:
     return {u.identifier: u for u in users}
 
-
 @st.cache_data(ttl=3600)
 def filter_submission_zip(
-    zip_bytes: bytes,
+    zip_path: str,
     submission_id_to_student_name_mapping: dict[str, str],
     assignment_name: str,
     zip_file_name: str,
     submission_ids: set[str] | None = None,
-) -> bytes:
-    input_zip = io.BytesIO(zip_bytes)
-    output_zip = io.BytesIO()
-    if submission_ids and len(submission_ids) == (len(zipfile.ZipFile(input_zip, "r").infolist())-1):
-        return zip_bytes
+) -> list[tuple[int, int, int, str]]:
+    output_dir = os.path.join(os.path.dirname(zip_path), "filtered_submission_parts")
+    if os.path.exists(output_dir):
+        shutil.rmtree(output_dir)
+    os.makedirs(output_dir, exist_ok=True)
+    zip_parts: list[tuple[int, int, int, str]] = []
+    part = 1
+    files_in_part = 0
+    current_path = os.path.join(output_dir, f"part{part}.zip")
+    zout = zipfile.ZipFile( current_path, "w", compression=zipfile.ZIP_DEFLATED, )
     try:
-        with zipfile.ZipFile(input_zip, "r") as zin:
-            with zipfile.ZipFile(output_zip, "w", compression=zipfile.ZIP_DEFLATED,) as zout:
-                for info in zin.infolist():
-                    filename = info.filename
-                    if filename.endswith("submission_metadata.yml"):
-                        zout.writestr(f"{zip_file_name}/{filename.split('/')[-1]}", zin.read(filename))
-                        continue
-                    basename = filename.rsplit("/", 1)[-1]
-                    if submission_ids:
-                        if any(submission_id.lower() in basename.lower() for submission_id in submission_ids):
-                            submission_id = [submission_id for submission_id in submission_ids if (submission_id.lower() in basename.lower())][0]
-                            student_name = submission_id_to_student_name_mapping[submission_id]
-                            zout.writestr(f"{zip_file_name}/{assignment_name}_{student_name}_{submission_id}_graded_submission.pdf", zin.read(filename))
-                    else:
-                        submission_id = filename.split('/')[-1].split('.')[0]
-                        if submission_id in submission_id_to_student_name_mapping:
-                            student_name = submission_id_to_student_name_mapping[submission_id]
-                            zout.writestr(f"{zip_file_name}/{assignment_name}_{student_name}_{submission_id}_graded_submission.pdf", zin.read(filename))
-                        else:
-                            zout.writestr(f"{zip_file_name}/{filename.split('/')[-1]}", zin.read(filename))
-        return output_zip.getvalue()
+        with zipfile.ZipFile(zip_path, "r") as zin:
+            infos = zin.infolist()
+            for info in infos:
+                filename = info.filename
+                if filename.endswith("submission_metadata.yml"):
+                    # Exclude submission metadata
+                    # output_filename = (f"{zip_file_name}/{filename.split('/')[-1]}")
+                    # with zin.open(info, "r") as source_file:
+                    #     with zout.open(output_filename, "w") as dest_file:
+                    #         shutil.copyfileobj(source_file, dest_file, length=CHUNK_SIZE)
+                    continue
+                basename = filename.rsplit("/", 1)[-1]
+                submission_id = None
+                if submission_ids:
+                    matching_submission_ids = [sid for sid in submission_ids if sid.lower() in basename.lower()]
+                    if matching_submission_ids:
+                        submission_id = matching_submission_ids[0]
+                else:
+                    submission_id = basename.split(".")[0]
+                    if (submission_id not in submission_id_to_student_name_mapping):
+                        submission_id = None
+                if submission_id is None:
+                    continue # Skip submissions that weren't requested.
+                student_name = submission_id_to_student_name_mapping[submission_id]
+                output_filename = ( f"{zip_file_name}/{assignment_name}_{student_name}_{submission_id}_graded_submission.pdf" )
+                # Start a new part if this file would make the current part too large.
+                current_size = (os.path.getsize(current_path) if os.path.exists(current_path) else 0)
+                if files_in_part > 0 and current_size + info.file_size > MAX_FILE_SIZE:
+                    zout.close()
+                    final_size = os.path.getsize(current_path)
+                    zip_parts.append((part, files_in_part, final_size, current_path))
+                    part += 1
+                    files_in_part = 0
+                    current_path = os.path.join(output_dir, f"part{part}.zip")
+                    zout = zipfile.ZipFile(current_path, "w", compression=zipfile.ZIP_DEFLATED)
+                with zin.open(info, "r") as source_file:
+                    with zout.open(output_filename, "w") as dest_file:
+                        shutil.copyfileobj(source_file, dest_file, length=CHUNK_SIZE)
+                files_in_part += 1
+            zout.close()
+            if files_in_part:
+                final_size = os.path.getsize(current_path)
+                zip_parts.append((part, files_in_part, final_size, current_path))
     except Exception:
-        print(zip_bytes)
         traceback.print_exc()
-        return b""
-
+        try:
+            zout.close()
+        except Exception:
+            pass # Don't leave partially generated parts around.
+        if os.path.exists(output_dir):
+            shutil.rmtree(output_dir)
+        return []
+    finally:
+        try:
+            zout.close()
+        except Exception:
+            pass
+    return zip_parts
 
 def format_name(s: Student | Member) -> tuple[str, str]:
     if isinstance(s, Student):
@@ -335,14 +371,15 @@ def get_original_submissions_zip_bytes(
     return zip_parts, successfully_downloaded, failed_to_download
 
 
-@sample_report_available
 @disk_cache_data(ttl=3600, ignore_args={"progress_callback"})
 def get_graded_submission_zip_bytes_helper(
     _conn: Conn,
     course_id: str,
     assignment_id: str,
     progress_callback: Callable[[float], Any] | None = None,
-) -> str | bytes:
+) -> str:
+    if _conn == SAMPLE_PLACEHOLDER_GS_CONN:
+        return 'sample_reports_data/bytes_data/graded_submission_bytes.bin'
     review_grades_url = Endpoint.REVIEW_GRADES.format(base_url=_conn.account.gradescope_base_url, course_id=course_id, assignment_id=assignment_id)
     review_grades_resp = query_endpoint(Endpoint.REVIEW_GRADES, _conn, course_id=course_id, assignment_id=assignment_id)
     soup = BeautifulSoup(review_grades_resp.text, "html.parser").find("meta", {"name": "csrf-token"})
@@ -363,17 +400,33 @@ def get_graded_submission_zip_bytes_helper(
                 progress_callback(1.0)
             break
         time.sleep(1)
-    # download full .zip with all students
-    # for _ in range(10):
-    #     try:
-    #         resp3 = query_endpoint(Endpoint.ZIP_FILE, _conn, course_id=course_id, assignment_id=assignment_id)
-    #         zipfile.ZipFile(io.BytesIO(resp3.content), "r")
-    #         return resp3.content
-    #     except Exception:
-    #         time.sleep(1)
-    # return b''
-    time.sleep(2)
-    return Endpoint.ZIP_FILE.value.format(base_url=_conn.account.gradescope_base_url, course_id=course_id, assignment_id=assignment_id)
+    # download full .zip with all students in chunks
+    # Store the large ZIP on disk rather than ever loading it into memory.
+    zip_url = Endpoint.ZIP_FILE.value.format( base_url=_conn.account.gradescope_base_url, course_id=course_id, assignment_id=assignment_id)
+    cache_key = hashlib.sha256(pickle.dumps((course_id, assignment_id), protocol=pickle.HIGHEST_PROTOCOL)).hexdigest()
+    output_dir = f"large_data/{cache_key}"
+    os.makedirs(output_dir, exist_ok=True)
+    zip_path = f"{output_dir}/gradescope_export.zip"
+    # Gradescope can occasionally report "completed" slightly before the # ZIP is actually available, so retry the download a few times.
+    for attempt in range(10):
+        try:
+            with _conn.account.session.get(zip_url, stream=True) as response:
+                response.raise_for_status() # Write the response incrementally. At no point is the complete ZIP held in memory.
+                with open(zip_path, "wb") as f:
+                    for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
+                        if chunk:
+                            f.write(chunk)
+            # Verify that we actually got a valid ZIP before returning its path.
+            with zipfile.ZipFile(zip_path, "r") as zf:
+                zf.testzip()
+            return zip_path
+        except Exception:
+            if os.path.exists(zip_path):
+                os.remove(zip_path)
+            if attempt == 9:
+                raise
+            time.sleep(1)
+    raise RuntimeError("Failed to download Gradescope export ZIP")
 
 
 def get_graded_submissions_zip_bytes(
@@ -385,10 +438,10 @@ def get_graded_submissions_zip_bytes(
     zip_file_name: str,
     submission_ids: set[str] | None = None,
     _progress_callback: Callable[[float], Any] | None = None,
-) -> str | bytes:
-    # zip_bytes = get_graded_submission_zip_bytes_helper(_conn, course_id, assignment_id, _progress_callback)
-    # return filter_submission_zip(zip_bytes, submission_id_to_student_name_mapping, assignment_name, zip_file_name, submission_ids)
-    return get_graded_submission_zip_bytes_helper(_conn, course_id, assignment_id, _progress_callback)
+) -> list[tuple[int, int, int, str]]:
+    zip_path = get_graded_submission_zip_bytes_helper(_conn, course_id, assignment_id, _progress_callback)
+    return filter_submission_zip(zip_path, submission_id_to_student_name_mapping, assignment_name, zip_file_name, submission_ids)
+    # return get_graded_submission_zip_bytes_helper(_conn, course_id, assignment_id, _progress_callback)
 
 ############################### Extract raw data from Gradescope ################################
 @sample_report_available

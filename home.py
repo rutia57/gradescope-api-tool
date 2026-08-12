@@ -166,6 +166,14 @@ with container:
                 f"{st.session_state.selected_assignment_name}_"
                 f"{st.session_state.selected_course_name}_"
             )
+        if "original_submissions_paths_metadata" not in st.session_state:
+            st.session_state.original_submissions_paths_metadata = None
+        if "graded_submissions_zip_path" not in st.session_state:
+            st.session_state.graded_submissions_zip_path = None
+        if "graded_submissions_paths_metadata" not in st.session_state:
+            st.session_state.graded_submissions_paths_metadata = None
+        if "graded_submissions_export_in_progress" not in st.session_state:
+            st.session_state.graded_submissions_export_in_progress = False
 
         # session vars used for graded zip download
         if "download_button_disabled" not in st.session_state:
@@ -412,24 +420,30 @@ with container:
                                         else:
                                             success_message_placeholder.empty()
                                             success_message_placeholder.success('Export complete!')
-                                            if isinstance(st.session_state.graded_submissions_url, bytes):
-                                                grades_download_button_slot.download_button(
-                                                    f'**Download all graded submissions with feedback ({len(users_with_grades)}) (.zip containing .pdf files)**',
-                                                    data=st.session_state.graded_submissions_url,
-                                                    on_click=lambda: increment_button_count('download_graded_submissions'),
-                                                    file_name=f'{assignment.name.replace(" ","")}_graded_submissions_with_comments_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
-                                                    disabled=False,
-                                                    key=str(uuid.uuid4()),
-                                                )
-                                            else:
-                                                grades_download_button_slot.link_button(
-                                                    f'**Download all graded submissions with feedback ({len(users_with_grades)}) (.zip containing .pdf files)**',
-                                                    url=st.session_state.graded_submissions_url,
-                                                    on_click=lambda: increment_button_count('download_graded_submissions'),
-                                                    disabled=False,
-                                                    key=str(uuid.uuid4()),
-                                                )
-
+                                            if st.session_state.graded_submissions_paths_metadata is not None:
+                                                c1, c2, c3 = grades_download_button_slot.columns([5,3,4])
+                                                if len(st.session_state.graded_submissions_paths_metadata) > 1:
+                                                    with c2:
+                                                        st.write(f"Select which part of {len(st.session_state.graded_submissions_paths_metadata)} to download (large files are split into multiple parts to avoid failures due to memory constraints):")
+                                                    with c3:
+                                                        graded_submissions_download_part = st.selectbox(
+                                                            label="[label]",
+                                                            options=st.session_state.graded_submissions_paths_metadata,
+                                                        format_func=lambda x: f"[Part {x[0]} of {len(st.session_state.graded_submissions_paths_metadata)}] ({x[1]} files, {x[2]/(1024*1024):.2f} MB)",
+                                                        label_visibility="collapsed",
+                                                    )
+                                                else:
+                                                    graded_submissions_download_part = st.session_state.graded_submissions_paths_metadata[0]
+                                                with c1:
+                                                    filename_suffix = f'_{graded_submissions_download_part[0]:02d}_of_{len(st.session_state.graded_submissions_paths_metadata):02d}' if len(st.session_state.graded_submissions_paths_metadata) > 1 else ''
+                                                    st.download_button(
+                                                        f'**Download graded submissions with feedback for selected students ({graded_submissions_download_part[1]}) (.zip containing .pdf files) (part {graded_submissions_download_part[0]} of {len(st.session_state.graded_submissions_paths_metadata)})**',
+                                                        open(graded_submissions_download_part[3], 'rb').read(),
+                                                        file_name=f'{assignment.name.replace(" ","")}_graded_submissions{filename_suffix}_{datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")}.zip',
+                                                        on_click=lambda: increment_button_count('download_graded_submissions'),
+                                                        disabled=False,
+                                                        key=str(uuid.uuid4()),
+                                                    )
                             with error_logged_section(firestore_db=st.session_state.firestore_db, name="Show assignment outline & stats section"):
                                 st.markdown(f'#### 4. Assignment outline info & question stats')
                                 st.caption('Table with a summary of the questions on this assignment, including the rubric with possible comments, grader info, and grade stats for each question.')
@@ -446,11 +460,11 @@ with container:
 
                             with error_logged_section(firestore_db=st.session_state.firestore_db, name="Graded submissions export & download"):
                                 with export_button_col:
-                                    export_button = st.button(f"Export graded submissions with feedback for all students ({len(users_with_grades)}) (.zip containing .pdf files)")
+                                    export_button = st.button(f"Export graded submissions with feedback (.zip containing .pdf files)")
                                     st.caption('🐌 Warning: This export can take a while (up to ~30 mins if the Gradescope server is busy) for classes with many (80+) students, even if not all students are selected. You\'ll get an email when the export is complete.')
                                     if export_button:
                                         with st.spinner('Downloading graded submissions...', show_time=True):
-                                            st.session_state.graded_submissions_url = get_graded_submissions_zip_bytes(
+                                            st.session_state.graded_submissions_paths_metadata = get_graded_submissions_zip_bytes(
                                                 conn,
                                                 course_id,
                                                 assignment_id,
@@ -462,6 +476,7 @@ with container:
                                             )
                                             progress_cb(1.1)
 
+                            with error_logged_section(firestore_db=st.session_state.firestore_db, name="Original submissions download"):
                                 with download_original_submissions_container:
                                     with download_original_submissions_expander:
                                         with st.spinner('Downloading original PDF submissions...', show_time=True):
