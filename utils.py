@@ -304,7 +304,7 @@ def get_original_submissions_zip_bytes(
     assignment_name: str,
     submission_ids_and_student_names: list[tuple[str, str]],
 ) -> tuple[list[tuple[int, int, int, str]], set[str], set[str]]:
-    cache_key = hashlib.sha256(pickle.dumps((course_id, assignment_id, assignment_id, tuple(submission_ids_and_student_names)), protocol=pickle.HIGHEST_PROTOCOL)).hexdigest()
+    cache_key = hashlib.sha256(pickle.dumps((course_id, assignment_id, st.session_state.state_hash, assignment_id, tuple(submission_ids_and_student_names)), protocol=pickle.HIGHEST_PROTOCOL)).hexdigest()
     if _conn == SAMPLE_PLACEHOLDER_GS_CONN:
         output_zip = io.BytesIO()
         with open("sample_reports_data/get_original_submissions_zip_bytes.pkl", "rb") as f:
@@ -402,8 +402,8 @@ def get_graded_submission_zip_bytes_helper(
         time.sleep(1)
     # download full .zip with all students in chunks
     # Store the large ZIP on disk rather than ever loading it into memory.
-    zip_url = Endpoint.ZIP_FILE.value.format( base_url=_conn.account.gradescope_base_url, course_id=course_id, assignment_id=assignment_id)
-    cache_key = hashlib.sha256(pickle.dumps((course_id, assignment_id), protocol=pickle.HIGHEST_PROTOCOL)).hexdigest()
+    zip_url = Endpoint.ZIP_FILE.value.format(base_url=_conn.account.gradescope_base_url, course_id=course_id, assignment_id=assignment_id)
+    cache_key = hashlib.sha256(pickle.dumps((course_id, assignment_id, st.session_state.state_hash), protocol=pickle.HIGHEST_PROTOCOL)).hexdigest()
     output_dir = f"large_data/{cache_key}"
     os.makedirs(output_dir, exist_ok=True)
     zip_path = f"{output_dir}/gradescope_export.zip"
