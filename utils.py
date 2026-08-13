@@ -228,7 +228,6 @@ def filter_submission_zip(
                 if submission_id is None:
                     continue # Skip submissions that weren't requested.
                 student_name = submission_id_to_student_name_mapping[submission_id]
-                output_filename = ( f"{zip_file_name}_part{part}/{assignment_name}_{student_name}_{submission_id}_graded_submission.pdf" )
                 # Start a new part if this file would make the current part too large.
                 current_size = (os.path.getsize(current_path) if os.path.exists(current_path) else 0)
                 if files_in_part > 0 and current_size + info.file_size > MAX_FILE_SIZE:
@@ -239,6 +238,7 @@ def filter_submission_zip(
                     files_in_part = 0
                     current_path = os.path.join(output_dir, f"part{part}.zip")
                     zout = zipfile.ZipFile(current_path, "w", compression=zipfile.ZIP_DEFLATED)
+                output_filename = ( f"{zip_file_name}_part{part}/{assignment_name}_{student_name}_{submission_id}_graded_submission.pdf" )
                 with zin.open(info, "r") as source_file:
                     with zout.open(output_filename, "w") as dest_file:
                         shutil.copyfileobj(source_file, dest_file, length=CHUNK_SIZE)
