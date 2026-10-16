@@ -1,4 +1,5 @@
 # Gradescope API tool
+[![Ping Streamlit app to keep it awake](https://github.com/rutia57/gradescope-api-tool/actions/workflows/ping_streamlit_app.yml/badge.svg)](https://github.com/rutia57/gradescope-api-tool/actions/workflows/ping_streamlit_app.yml)
 <sub>Author: Ruth Rosenblum ([ruros27@gmail.com](ruros27@gmail.com))</sub> 
 
 Streamlit tool to extract assignment &amp; grade info from Gradescope.
